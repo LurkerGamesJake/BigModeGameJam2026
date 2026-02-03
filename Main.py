@@ -59,17 +59,19 @@ tolerance = 0.01
 if abs((monitor_width / monitor_height) - target_ratio) < tolerance:
     SCREEN_WIDTH = 640
     SCREEN_HEIGHT = 360
-    scale_factor = monitor_width / SCREEN_WIDTH
+    scale_factor = int(monitor_width / SCREEN_WIDTH)
     screen = pygame.display.set_mode([SCREEN_WIDTH * scale_factor, SCREEN_HEIGHT * scale_factor], pygame.FULLSCREEN | pygame.DOUBLEBUF)
 elif abs((monitor_width / monitor_height) - target_ratio_2) < tolerance:
     SCREEN_WIDTH = 640
     SCREEN_HEIGHT = 400
-    scale_factor = monitor_width / SCREEN_WIDTH
+    scale_factor = int(monitor_width / SCREEN_WIDTH)
     screen = pygame.display.set_mode([SCREEN_WIDTH * scale_factor, SCREEN_HEIGHT * scale_factor], pygame.FULLSCREEN | pygame.DOUBLEBUF)
+#force_windowed = True
+#if force_windowed:
 else:
     SCREEN_WIDTH = 640
     SCREEN_HEIGHT = 360
-    scale_factor = 2
+    scale_factor = int(monitor_width/SCREEN_WIDTH)
     screen = pygame.display.set_mode([SCREEN_WIDTH * scale_factor, SCREEN_HEIGHT * scale_factor], pygame.DOUBLEBUF)
 
 print(scale_factor)
@@ -202,6 +204,8 @@ class Individual_Sprite(pygame.sprite.Sprite):
             self.surf.set_alpha(0)
             self.surf.get_alpha()
             self.increase_alpha = True
+
+        
 
     def update(self):
         global RUNTIME_STATE
@@ -428,6 +432,9 @@ class Generic_Enemy(Individual_Sprite):
         self.angle = 90.0
         self.vx = 0.0
         self.vy = 0.0
+        self.bonk = False
+        self.bonk_frame = 1
+        self.bonk_start = None
 
     def take_damage(self):
         self.hp -= RUNTIME_STATE["damage"]
@@ -439,12 +446,14 @@ class Generic_Enemy(Individual_Sprite):
             play_damage_sound()
 
     def determine_action(self):
-        if self.enemy_class == 'Evil':
+        #print(self.enemy_class)
+        if self.enemy_class == 'Pigeon':
             self.follow_player()
         else:
             self.fire_bullet()
 
     def character_moving_animation(self):
+        #if not self.bonk:
         if self.direction != self.previous_direction:
             full_image = IMAGES_DICT[f"Enemies_{self.enemy_class}_{self.direction}.png"]
             self.surf = full_image
@@ -453,7 +462,8 @@ class Generic_Enemy(Individual_Sprite):
 
     def follow_player(self):
         global RUNTIME_STATE
-        if self.enemy_class != 'Evil':
+
+        if self.enemy_class != 'Pigeon':
             return
 
         dt = RUNTIME_STATE["delta_time"]
@@ -577,8 +587,8 @@ class Generic_Enemy(Individual_Sprite):
 
 
     def move(self, dx, dy, speed, dt):
-        move_x = dx * speed * dt * scale_factor
-        move_y = dy * speed * dt * scale_factor
+        move_x = dx * speed * dt * 4
+        move_y = dy * speed * dt * 4
         angle = self.angle % 360
         if 0 <= angle < 15:
             self.direction = '0'
@@ -612,8 +622,8 @@ class Generic_Enemy(Individual_Sprite):
         for building in RUNTIME_STATE["building_group"]:
             if test_rect.colliderect(building.world_rect):
                 print(f"Collision!")
-                print("Player Topleft:", test_rect.topleft)
-                print("Player Bottomright:", test_rect.bottomright)
+                print("Enemy Topleft:", test_rect.topleft)
+                print("Enemy Bottomright:", test_rect.bottomright)
                 print("Building Topleft:", building.world_rect.topleft)
                 print("Building Bottomright:", building.world_rect.bottomright)
                 self.moving = False
@@ -629,6 +639,7 @@ class Generic_Enemy(Individual_Sprite):
         for enemy in RUNTIME_STATE["enemy_group"]:
             if enemy != self:
                 if test_rect.colliderect(enemy.world_rect):
+                    print('collided with other enemy')
                     self.moving = False
                     if abs(self.vx) + abs(self.vy) < 5:
                     
@@ -672,7 +683,7 @@ class Generic_Enemy(Individual_Sprite):
             dx = RUNTIME_STATE["player"].world_x - self.world_x
             dy = RUNTIME_STATE["player"].world_y - self.world_y
             length = math.hypot(dx, dy)
-            if length == 0 or length > (400* scale_factor):
+            if length == 0 or length > 1600:
                 return  # or skip shooting this frame
 
 
@@ -721,8 +732,8 @@ class Enemy_Bullet(Individual_Sprite):
 
     def move_bullet(self):
         global RUNTIME_STATE
-        move_x = self.bullet_dx * self.speed * RUNTIME_STATE["delta_time"] * scale_factor
-        move_y = self.bullet_dy * self.speed * RUNTIME_STATE["delta_time"] * scale_factor
+        move_x = self.bullet_dx * self.speed * RUNTIME_STATE["delta_time"] * 4
+        move_y = self.bullet_dy * self.speed * RUNTIME_STATE["delta_time"] * 4
 
         test_rect = self.world_rect.copy()
         test_rect.topleft = (self.world_x - (move_x), self.world_y - (move_y))
@@ -776,8 +787,8 @@ class Bullet(Individual_Sprite):
 
     def move_bullet(self):
         global RUNTIME_STATE
-        move_x = self.bullet_dx * self.speed * RUNTIME_STATE["delta_time"] * scale_factor
-        move_y = self.bullet_dy * self.speed * RUNTIME_STATE["delta_time"] * scale_factor
+        move_x = self.bullet_dx * self.speed * RUNTIME_STATE["delta_time"] * 4
+        move_y = self.bullet_dy * self.speed * RUNTIME_STATE["delta_time"] * 4
 
         test_rect = self.world_rect.copy()
         test_rect.topleft = (self.world_x - (move_x), self.world_y - (move_y))
@@ -828,13 +839,42 @@ class Ducky_Sprite(Individual_Sprite):
         self.angle = 90.0
         self.vx = 0.0
         self.vy = 0.0
-        #self.update()
+        self.bonk = False
+        self.bonk_frame = 1
+        self.bonk_start = None
+        HITBOX_MARGIN = int(2 * scale_factor)
+        self.world_rect.inflate_ip(
+            -HITBOX_MARGIN,
+            -HITBOX_MARGIN
+        )
+        
 
     def character_moving_animation(self):
-        if self.direction != self.previous_direction:
-            full_image = IMAGES_DICT[f"Ducky_{self.direction}.png"]
-            self.surf = full_image
-            self.previous_direction = self.direction
+        if not self.bonk:
+            if self.direction != self.previous_direction:
+                full_image = IMAGES_DICT[f"Ducky_{self.direction}.png"]
+                self.surf = full_image
+                self.previous_direction = self.direction
+        else:
+            curr_bonk_frame = f"Ducky_Bonk_{self.direction}_{self.bonk_frame:02d}.png"
+            current_time = pygame.time.get_ticks()
+            new_frame = int((current_time - self.bonk_start)/100) + 1
+            new_bonk_frame = f"Ducky_Bonk_{self.direction}_{(new_frame):02d}.png"
+            if new_frame <= 6 and self.direction != '60':
+                if new_bonk_frame != curr_bonk_frame:
+                    full_image = IMAGES_DICT[new_bonk_frame]
+                    self.surf = full_image
+                    self.bonk_frame = new_frame
+            else:
+                full_image = IMAGES_DICT[f"Ducky_{self.direction}.png"]
+                self.surf = full_image
+                self.previous_direction = self.direction
+                self.bonk = False
+                self.bonk_frame = 1
+                self.bonk_start = None
+
+            
+
         
     def character_stop_moving(self):
         full_image = IMAGES_DICT[f"Ducky_{self.direction}.png"]
@@ -940,7 +980,7 @@ class Ducky_Sprite(Individual_Sprite):
 
 
             #make the speed static 500 for now
-            speed=500 * RUNTIME_STATE["speed_mult"]
+            speed=350 * RUNTIME_STATE["speed_mult"]
             new_bullet = Bullet(
                 top_left=(bullet_x / scale_factor, bullet_y / scale_factor),
                 bullet_dx=dx,
@@ -954,8 +994,8 @@ class Ducky_Sprite(Individual_Sprite):
         RUNTIME_STATE["camera"].follow(self)
 
     def move(self, dx, dy, speed, dt):
-        move_x = dx * speed * dt * scale_factor
-        move_y = dy * speed * dt * scale_factor
+        move_x = dx * speed * dt * 4
+        move_y = dy * speed * dt * 4
         angle = self.angle % 360
         if 0 <= angle < 15:
             self.direction = '0'
@@ -986,8 +1026,25 @@ class Ducky_Sprite(Individual_Sprite):
 
         test_rect = self.world_rect.copy()
         test_rect.topleft = (self.world_x - (move_x), self.world_y - (move_y))
+        for enemy in RUNTIME_STATE["enemy_group"]:
+            if test_rect.colliderect(enemy.world_rect):
+                self.bonk = True
+                self.bonk_start = pygame.time.get_ticks()
+                self.moving = False
+                if abs(self.vx) + abs(self.vy) < 5:
+                    
+                    self.vx = sign(self.vx) * 7.5
+                    self.vy = sign(self.vy) * 7.5
+                else:
+                    self.vx *= -7.5
+                    self.vy *= -7.5
+                RUNTIME_STATE["speed_mult"] -= .05
+                error_selection_sound()
+                break
         for building in RUNTIME_STATE["building_group"]:
             if test_rect.colliderect(building.world_rect):
+                self.bonk = True
+                self.bonk_start = pygame.time.get_ticks()
                 print(f"Collision!")
                 print("Player Topleft:", test_rect.topleft)
                 print("Player Bottomright:", test_rect.bottomright)
@@ -1011,19 +1068,7 @@ class Ducky_Sprite(Individual_Sprite):
                 RUNTIME_STATE["speed_mult"] -= .05
                 error_selection_sound()
                 break
-        for enemy in RUNTIME_STATE["enemy_group"]:
-            if test_rect.colliderect(enemy.world_rect):
-                self.moving = False
-                if abs(self.vx) + abs(self.vy) < 5:
-                    
-                    self.vx = sign(self.vx) * 7.5
-                    self.vy = sign(self.vy) * 7.5
-                else:
-                    self.vx *= -7.5
-                    self.vy *= -7.5
-                RUNTIME_STATE["speed_mult"] -= .05
-                error_selection_sound()
-                break
+        
         self.character_moving_animation()
         if self.moving:
             self.world_x -= int(move_x)
@@ -1608,7 +1653,7 @@ def update_top_display():
         speed = int(math.hypot(RUNTIME_STATE["player"].vx, RUNTIME_STATE["player"].vy))
         enemies_left = int(len(RUNTIME_STATE["enemy_group"]))
         #display_str = f"FPS: {fps} INTERNAL RESOLUTION: {SCREEN_WIDTH}x{SCREEN_HEIGHT} ACTUAL RESOLUTION: {screen.get_width()}x{screen.get_height()} PLAYER POS: {int(RUNTIME_STATE["player"].world_x), int(RUNTIME_STATE["player"].world_y)} PLAYER SCREEN POS {RUNTIME_STATE["player"].rect.topleft} PLAYER DIRECTION {RUNTIME_STATE["player"].direction} PLAYER ANGLE {int((RUNTIME_STATE["player"].angle % 360)):03d}, MOVE ANGLE {movement_angle:03d} SPEED {speed:04d} SPEED MULT {RUNTIME_STATE["speed_mult"]:.2f}"
-        display_str = f"HP: {RUNTIME_STATE["player_hp"]:02d} SPEED: {speed:04d} SPEED MULT: {RUNTIME_STATE["speed_mult"]:.2f} Enemies Left: {enemies_left:02d} Stage: {RUNTIME_STATE["level"]:02d} Damage: {RUNTIME_STATE["damage"]:02d}                                           FPS: {fps} POS: {int(RUNTIME_STATE["player"].world_x), int(RUNTIME_STATE["player"].world_y)} ANGLE {int((RUNTIME_STATE["player"].angle % 360)):03d} MOVE ANGLE {movement_angle:03d} INT. RES {SCREEN_WIDTH}x{SCREEN_HEIGHT} ACT RES: {screen.get_width()}x{screen.get_height()}"
+        display_str = f"HP: {RUNTIME_STATE["player_hp"]:02d} SPEED: {speed:04d} SPEED MULT: {RUNTIME_STATE["speed_mult"]:.2f} Enemies Left: {enemies_left:02d} Stage: {RUNTIME_STATE["level"]:02d} Damage: {RUNTIME_STATE["damage"]:02d}                                           FPS {fps} POS {int(RUNTIME_STATE["player"].world_x), int(RUNTIME_STATE["player"].world_y)} ANGLE {int((RUNTIME_STATE["player"].angle % 360)):03d} MOVE ANGLE {movement_angle:03d} INT.RES {SCREEN_WIDTH}x{SCREEN_HEIGHT} ACT.RES {screen.get_width()}x{screen.get_height()} SCALE {scale_factor}"
         if RUNTIME_STATE["top_display_string"] != display_str:
             RUNTIME_STATE["TopStatusBar"].change_curr_text(input_string=display_str, text_type='immediate')
             RUNTIME_STATE["top_display_string"] = display_str
@@ -2026,24 +2071,35 @@ def main():
 main()
 
 #Next steps:
+#Player physics continuous tweaking:
+#Still doesn't feel fun enough
+
+#Bouncing:
+#Tied to framerate, way too fast on lower framerate.
+#Unsure if bounce affects both enemy and player correctly
+#Bouncing should be squishier and less dramatic
+
+#Gun fire
+#Needs tied to animation
+#Can't work on it until animation is ready
+
 #Enemy Stationary:
+#Fine tune range it shoots at
 #Fix issues with rate of fire
 #Should either be allowed x number of bullets or fire every x seconds
-#Should see player in a greater range?
 
 #Enemy chaser:
 #Fix issues with objects being in path-some work done, but not working too great yet
+#Bounce animation could be added? Not super high priority
 
-#Level system
-#Clear level
-#Waits for 2 seconds 
-#Press enter to continue is added
-#Enter is hit, fade to black
-#Fade from black to cafe scene
-#Dialog from NPC <-Here
-#Select upgrade
-#Load in next level
+#Add enemy fish
+#A bit different from idle enemy
+#Underwater and unshootable if not close
+#Pops up to shoot when close
+#Stays up and idle while close
+#Goes back down if far away
 
-#Player physics continuous tweaking:
-#Unsure if bounce affects both enemy and player correctly
-#Bouncing should not be direct opposite, it should be somewhat perpendicular
+
+
+
+
