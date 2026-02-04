@@ -1,22 +1,24 @@
 #---------INITIAL SETUP
 import pygame
-import pygame.surfarray
+#import pygame.surfarray
 import sys
 import os
 from appdirs import user_data_dir
 #import PowerPlantBattle
 from collections import Counter
 #import psutil
-import copy
+#import copy
 import time
 #import gc
-import random
+#import random
 import math
-import asyncio
+#import asyncio
 import numpy as np
 import pandas as pd
 from collections import deque
 import warnings
+import csv
+from collections import defaultdict
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 #gc.set_debug(gc.DEBUG_STATS)
@@ -449,6 +451,8 @@ class Generic_Enemy(Individual_Sprite):
         #print(self.enemy_class)
         if self.enemy_class == 'Pigeon':
             self.follow_player()
+        elif self.enemy_class == 'Sleepy':
+            return
         else:
             self.fire_bullet()
 
@@ -1387,6 +1391,11 @@ class Regular_Font_Line(pygame.sprite.Group):
                     sprite.kill()
                 self.ready_for_removal = True
 
+            else:
+                for item in self.char_list:
+                    item.reveal()
+                self.all_letters_set = True
+
         if self.text_type in ('not_arrow', 'immediate') and self.ready_for_removal:
             for sprite in self:
                 sprite.kill()
@@ -1709,15 +1718,47 @@ def change_level_selection():
     initialize_overworld()
 
 
+
+
+def parse_dialog_tsv(path):
+    dialog_groups = defaultdict(list)
+
+    with open(path, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f, delimiter="\t")
+        for row in reader:
+            speech_id = int(row["Speech"]) - 1  # zero-based index
+            line = row["Line"].strip()
+
+            # Options
+            if row["Options"].strip().lower() == "yes":
+                options = ["+3 HP", "+.2 Min Speed Mult", "+1 Damage"]  # or placeholder like ["OPTION_1", "OPTION_2"]
+            else:
+                options = None
+
+            # Talking head normalization
+            talking_head = row["TalkingHead"]
+
+            dialog_groups[speech_id].append([
+                line,
+                options,
+                talking_head
+            ])
+
+    # Convert defaultdict → ordered list
+    return [dialog_groups[i] for i in sorted(dialog_groups)]
+
+
 #---------GAME PHASES
 def titlescreen_phase():
     global RUNTIME_STATE
     if RUNTIME_STATE["title_screen"] == None:
         RUNTIME_STATE["title_screen"] = Title_Screen()
-        RUNTIME_STATE["ui_sprites"].add(RUNTIME_STATE["title_screen"], layer=9)
+        RUNTIME_STATE["ui_sprites"].add(RUNTIME_STATE["title_screen"], layer=7)
     elif RUNTIME_STATE["just_pressed"] and RUNTIME_STATE["just_pressed"]["action"]:
         kill_and_delete(RUNTIME_STATE["title_screen"])
-        RUNTIME_STATE["current_phase"] = overworld_phase
+        RUNTIME_STATE["title_screen"] = Diner_Screen()
+        RUNTIME_STATE["ui_sprites"].add(RUNTIME_STATE["title_screen"], layer=1)
+        RUNTIME_STATE["current_phase"] = diner_phase
 
 def overworld_phase():
     global RUNTIME_STATE
@@ -1840,7 +1881,7 @@ def diner_phase():
 
             else:
                 RUNTIME_STATE["level"] += 1
-                RUNTIME_STATE["curr_dialog_tree"] = RUNTIME_STATE["main_dialog_tree"][RUNTIME_STATE["level"] - 1]
+                RUNTIME_STATE["curr_dialog_tree"] = RUNTIME_STATE["main_dialog_tree"][RUNTIME_STATE["level"]]
                 change_level_selection()
                 RUNTIME_STATE["current_phase"] = transition_back_to_stage_phase
 
@@ -1902,7 +1943,7 @@ RUNTIME_STATE = {
 "speed_mult": 1.0,
 "player_hp": 7,
 "end_overlay": None,
-"level": 1,
+"level": 0,
 "level_cleared_tick": None,
 "black_screen": None,
 "DinerTalkBox": None,
@@ -1912,6 +1953,8 @@ RUNTIME_STATE = {
 
 #Set maps
 maps_path = os.path.join(PATH_START, "Maps")
+'''
+
 level_path = os.path.join(maps_path, f"{str(RUNTIME_STATE["level"])}")
 backgroundtiles_path = os.path.join(level_path, "BackgroundTiles.txt")
 tile_map = pd.read_csv(backgroundtiles_path, sep='\t', header=None)
@@ -1924,6 +1967,7 @@ enemy_map_fromsheet = pd.read_csv(enemymap_path, sep='\t', header=None)
 RUNTIME_STATE["tileset_group"] = Tileset_Group(tile_map) #save this?
 RUNTIME_STATE["building_group"] = Building_Group(building_map_fromsheet) #save this?
 RUNTIME_STATE["enemy_group"] = Enemy_Group(enemy_map_fromsheet) #save this?
+'''
 
 RUNTIME_STATE["pressed_keys"] = {
     "up": False,
@@ -1942,14 +1986,10 @@ RUNTIME_STATE["pressed_keys"] = {
 RUNTIME_STATE["prev_pressed_keys"] = RUNTIME_STATE["pressed_keys"].copy()
 
 
-dialog_tree = [[["???: Ayyy look who it is! Who invited dis guy?"], 
-                  ["DON PIGEON: I'm just breaking your balls. You did good today out there today kid. Get yourself sometin' nice.", None, "Don_Pigeon"],
-                  ["DON PIGEON: What'll it be, Slick?", ["+3 HP", "+.2 Min Speed Mult", "+1 Damage"], "Don_Pigeon"],
-                  ["DON PIGEON: That'll polish your feathers. Keep up the good work.", None, "Don_Pigeon"]],
-                [["DON PIGEON: Whoa look at you. Ya beat the fuckin game too fast. There's no levels left.", None, "Don_Pigeon"],
-                 ["DON PIGEON: Go home kid. I ain't got shit for you to do right now. The end.", None, "Don_Pigeon"],
-                 ["DON PIGEON: If you press the fire button one more fuckin' time the game's gonna crash.", None, "Don_Pigeon"]]
-                  ]
+dialogtree_path = os.path.join(maps_path, "DialogTree.txt")
+
+
+dialog_tree = parse_dialog_tsv(dialogtree_path)
 
 RUNTIME_STATE["main_dialog_tree"] = dialog_tree
 RUNTIME_STATE["curr_dialog_tree"] = RUNTIME_STATE["main_dialog_tree"][0]
@@ -2071,6 +2111,25 @@ def main():
 main()
 
 #Next steps:
+#Figure out level design ideas
+#Speech 1-Mention moving forward automatically, space to break, turning like a boat.  
+#Level 1-Tutorial for movement-Linear path, 1 enemy at the end
+#Speech 2-Mention shooting to gain speed mult and move faster, but breaking will be less effective. Taking damage will lower or reset speed mult
+#Level 2-Tutorial for combo system, still only stationary enemies
+#Speech 3-Mention buffs that can raise your damage dealt and minimum speed mult.
+#Level 3-Introduce chasing enemies
+#Speech 4-Mention that if Slick keeps up the good work, he can come aboard the train
+#Level 4-Tons of chasing enemies
+#Level 5-Introduce fish enemies
+#Level 6 onward-???, swap to train local for later levels
+#Final level-boss fight with Don Pigeon
+
+#Why is the player killing all the birds?
+#-To become capo
+#Why does Don Pigeon want Slick killing all these enemy birds?
+#-They're dispespecting the lake
+
+
 #Player physics continuous tweaking:
 #Still doesn't feel fun enough
 

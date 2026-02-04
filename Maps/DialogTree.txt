@@ -1,0 +1,24 @@
+Speech	Line	Options	TalkingHead
+0	"???: I'll be frank, I don't think you're up for the task, but I'm willing to give ya a shot."	No	Mystery
+0	???: There's some wise guy slumberin' on the lake. Take care of him.	No	Mystery
+0	"???: Woah, not so fast bud. Going around the lake in the winter isn't so easy."	No	Mystery
+0	???: You'll slide forward automatically. You'll look like a jerkoff if you press up or down.	No	Mystery
+0	"???: Press space to break. You can turn to the left or the right, but it's like a boat."	No	Mystery
+0	"???: Press enter to shoot. That's all there is to it. See you on the other side, my friend."	No	Mystery
+1	???: Good job making your bones. But there's still a long road to respect	No	Mystery
+1	???: Another part of the lake's got friends stompin' about it.	No	Mystery
+1	"???: Friends of a friend, not a friend of ours. Give them a warm welcome."	No	Mystery
+1	"???: The more punks you whack, the higher your speed mult goes."	No	Mystery
+1	"???: The faster you'll go, too. But you'll have a harder time braking. "	No	Mystery
+1	"???: If you bump into something, your speed mult will go down."	No	Mystery
+1	"???: And god forbid someone shootcha, the whole thing will reset."	No	Mystery
+1	"???: Alright, enough yammerin'. Get out there kid."	No	Mystery
+2	"???: Look who it is! Alright kid, allow me to formally introduce myself."	No	Mystery
+2	???: The name's Don Pigeon. I hear you wanna be made capo?	No	Don_Pigeon
+2	"Don Pigeon: Well, I wanna fuck Daisy Duck."	No	Don_Pigeon
+2	"Don Pigeon: I'm breaking your balls. Here, take somethin'."	Yes	Don_Pigeon
+2	Don Pigeon: Keep working with me and I'll take care of ya.	No	Don_Pigeon
+3	Don Pigeon: Welcome back Slick. What'll it be this time?	Yes	Don_Pigeon
+3	"Don Pigeon: Listen, I got a job coming up-not this next one, but it's some top level shit."	No	Don_Pigeon
+3	Don Pigeon: It comes from a friend of mine who runs the Luxury Liner	No	Don_Pigeon
+3	Don Pigeon: It's where all the best earners and capos relax.	No	Don_Pigeon
