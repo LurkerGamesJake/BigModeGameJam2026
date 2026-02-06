@@ -77,7 +77,7 @@ else:
     screen = pygame.display.set_mode([SCREEN_WIDTH * scale_factor, SCREEN_HEIGHT * scale_factor], pygame.DOUBLEBUF)
 
 print(scale_factor)
-TARGET_FPS = 300
+TARGET_FPS = 60
 
 pygame.display.set_caption("Big Mode Game Jam 2026")
 
@@ -238,6 +238,8 @@ class Individual_Sprite(pygame.sprite.Sprite):
             if curr_alpha <= 0:
                 self.decrease_alpha = False
 
+    
+
 
 #---------INDIVIDUAL SPRITES
 #This could be re-written around the new image logic. It may even need to be. 
@@ -313,6 +315,42 @@ class Black_Screen(Individual_Sprite):
         self.decrease_alpha = False
         self.surf.set_alpha(0)
 
+class Enemy_Alert(Individual_Sprite):
+    def __init__(self, start_pos):
+        super().__init__(
+            image_key="UI_EnemyAlert.png",
+            subsurface_rect=None,
+            start_pos=['tl', start_pos]
+        )
+
+        self.start_time = pygame.time.get_ticks()
+
+        self.HOLD_TIME = 500      # ms (no fade)
+        self.FADE_TIME = 500      # ms (fade duration)
+
+        self.START_ALPHA = 122
+        self.surf.set_alpha(self.START_ALPHA)
+
+        self.dead = False
+
+    def alert_slow_fade_out(self):
+        now = pygame.time.get_ticks()
+        elapsed = now - self.start_time
+
+        # Phase 1: hold
+        if elapsed < self.HOLD_TIME:
+            return
+
+        # Phase 2: fade
+        fade_elapsed = elapsed - self.HOLD_TIME
+        fade_ratio = min(fade_elapsed / self.FADE_TIME, 1.0)
+
+        new_alpha = int(self.START_ALPHA * (1 - fade_ratio))
+        self.surf.set_alpha(new_alpha)
+
+        if fade_ratio >= 1.0:
+            self.dead = True
+
 class Level_Clear_Screen(Individual_Sprite):
     def __init__(self):
         super().__init__(
@@ -333,7 +371,7 @@ class Level_Clear_Continue_Screen(Individual_Sprite):
 class Game_Over_Screen(Individual_Sprite):
     def __init__(self):
         super().__init__(
-            image_key=f"UI_GameOver.png",
+            image_key=f"UI_game over screen.png",
             subsurface_rect=None,
             start_pos=['tl', (0,0)]
         )
@@ -415,7 +453,9 @@ class Generic_Building(Individual_Sprite):
 
 class Generic_Enemy(Individual_Sprite):
     def __init__(self, top_left, enemy_class, df_pos=None):
-        if enemy_class != 'Test':
+        if enemy_class == 'Fish':
+            enemy_image = f"FishHole_01"
+        elif enemy_class != 'Test':
             enemy_image = f"{enemy_class}_90"
         else:
             enemy_image = enemy_class
@@ -437,6 +477,14 @@ class Generic_Enemy(Individual_Sprite):
         self.bonk = False
         self.bonk_frame = 1
         self.bonk_start = None
+        self.moving=False
+        self.following_player=False
+        self.active=False
+        self.alert=None
+        if self.enemy_class == 'Fish':
+            self.state = 'Hole'
+            self.state_frame = 1
+            self.state_start_time = pygame.time.get_ticks()
 
     def take_damage(self):
         self.hp -= RUNTIME_STATE["damage"]
@@ -451,10 +499,53 @@ class Generic_Enemy(Individual_Sprite):
         #print(self.enemy_class)
         if self.enemy_class == 'Pigeon':
             self.follow_player()
+        elif self.enemy_class == 'Fish':
+            self.fish_action()
         elif self.enemy_class == 'Sleepy':
             return
         else:
             self.fire_bullet()
+        if self.alert:
+            self.sync_alert()
+
+    def fish_action(self):
+        print('doing a fish action')
+        if self.state == 'Hole':
+            print('yeah its hole')
+            curr_hole_frame = f"Enemies_FishHole_{self.state_frame:02d}.png"
+            current_time = pygame.time.get_ticks()
+            new_frame = min(int((current_time - self.state_start_time)/100) + 1, 7)
+            print(new_frame)
+            new_hole_frame = f"Enemies_FishHole_{new_frame:02d}.png"
+            if new_frame <= 6:
+                print('yeah its more than 6 thats for sure')
+                if new_hole_frame != curr_hole_frame:
+                    print(new_hole_frame)
+                    full_image = IMAGES_DICT[new_hole_frame]
+                    self.surf = full_image
+                    self.state_frame = new_frame
+            else:
+                full_image = IMAGES_DICT[f"Enemies_FishHole_01.png"]
+                self.state_frame = 1
+                self.state_start_time = pygame.time.get_ticks()
+
+
+    def sync_alert(self):
+        if not self.alert:
+            return
+
+        self.alert.world_x = self.world_x + 3 * scale_factor
+        self.alert.world_y = self.world_y - 15 * scale_factor
+        self.alert.world_rect.topleft = (
+            int(self.alert.world_x),
+            int(self.alert.world_y)
+        )
+        if not self.alert.dead:
+            self.alert.alert_slow_fade_out()
+        else:
+            kill_and_delete(self.alert)
+            self.alert = None
+            
 
     def character_moving_animation(self):
         #if not self.bonk:
@@ -469,128 +560,149 @@ class Generic_Enemy(Individual_Sprite):
 
         if self.enemy_class != 'Pigeon':
             return
-
-        dt = RUNTIME_STATE["delta_time"]
-        ROT_SPEED = 120
-        ACCEL = 175
-        MAX_SPEED = 300
-        SIDE_DAMPING = 8
-        TURN_DRAG = 0.5
-        FRICTION = 0.995
-        LOOK_AHEAD = 64
-        AVOID_FORCE = 90
-        speed = math.hypot(self.vx, self.vy)
-        speed_ratio = min(speed / MAX_SPEED, 1)
-        effective_rot = ROT_SPEED * (1 - 0.6 * speed_ratio)
-
-        fx = math.cos(math.radians(self.angle))
-        fy = -math.sin(math.radians(self.angle))
-
-        probe_x = self.world_x + fx * LOOK_AHEAD
-        probe_y = self.world_y + fy * LOOK_AHEAD
-
-        avoid_turn = 0
-
-        for building in RUNTIME_STATE["building_group"]:
-            if building.world_rect.collidepoint(probe_x, probe_y):
-                print('Changing turn detected!')
-                # Determine which side to turn
-                bx, by = building.world_rect.center
-                ox = bx - self.world_x
-                oy = by - self.world_y
-
-                obstacle_angle = math.degrees(math.atan2(-oy, ox)) % 360
-                diff = angle_diff(obstacle_angle, self.angle)
-
-                # Turn away from obstacle
-                avoid_turn = -1 if diff > 0 else 1
-                break
-
-
-
-        player = RUNTIME_STATE["player"]
-
-        dx = player.world_x - self.world_x
-        dy = player.world_y - self.world_y
-
-        target_angle = math.degrees(math.atan2(-dy, dx)) % 360
-
-        turn_error = angle_diff(target_angle, self.angle)
-
-
-        #Determine rather to run left or right
-        TURN_DEADZONE = 3 
-
-        turn_dir = 0
-
-        #Checking player
-        if turn_error > TURN_DEADZONE:
-            turn_dir -= 1
-        elif turn_error < -TURN_DEADZONE:
-            turn_dir += 1
-
-        #Checking obstacled
-        turn_dir += avoid_turn *  75  #Tuneable value
-
-        self.angle += turn_dir * effective_rot * dt
-
-
-
-        movement_angle = math.degrees(math.atan2(-self.vy, self.vx)) % 360
-
-        #if keys["up"] or keys["joy_up"]:
-        rad = math.radians(self.angle)
-        self.vx += math.cos(rad) * ACCEL * dt
-        self.vy -= math.sin(rad) * ACCEL * dt
-        self.moving = True
         
-        #Determine rather to stop or slow down
-        #if keys["back"]:
-        #    self.vx *= 0.975
-        #    self.vy *= 0.975
+        dx = RUNTIME_STATE["player"].world_x - self.world_x
+        dy = RUNTIME_STATE["player"].world_y - self.world_y
+        length = math.hypot(dx, dy)
+        if length > 250 * scale_factor:
+            self.following_player = False
+            
+        else:
+            if not self.active:
+                print('do alert')
+                self.alert = Enemy_Alert(start_pos=(self.world_x/scale_factor + 3, self.world_y/scale_factor +7))
+                RUNTIME_STATE["overworld_sprites"].add(self.alert, layer=15)
+                play_alert_sound()
+            self.active = True
+            self.following_player = True
+        if self.active:
 
-        self.vx *= FRICTION
-        self.vy *= FRICTION
-
-        if avoid_turn != 0:
-            self.vx *= 0.97
-            self.vy *= 0.97
-
-        speed = math.hypot(self.vx, self.vy)
-        if speed > MAX_SPEED:
-            scale = MAX_SPEED / speed
-            self.vx *= scale
-            self.vy *= scale
+            dt = RUNTIME_STATE["delta_time"]
+            ROT_SPEED = 120
+            ACCEL = 90
+            if not self.following_player:
+                ACCEL = 0
+            MAX_SPEED = 300
+            SIDE_DAMPING = 8
+            TURN_DRAG = 0.5
+            FRICTION = 0.995
+            LOOK_AHEAD = 64
+            AVOID_FORCE = 90
             speed = math.hypot(self.vx, self.vy)
-        if speed > 0.01:
-            # Facing direction vector
+            speed_ratio = min(speed / MAX_SPEED, 1)
+            effective_rot = ROT_SPEED * (1 - 0.6 * speed_ratio)
+
             fx = math.cos(math.radians(self.angle))
             fy = -math.sin(math.radians(self.angle))
 
-            # Velocity normalized
-            vx_n = self.vx / speed
-            vy_n = self.vy / speed
+            probe_x = self.world_x + fx * LOOK_AHEAD
+            probe_y = self.world_y + fy * LOOK_AHEAD
 
-            # Dot product: how aligned velocity is with facing
-            alignment = vx_n * fx + vy_n * fy  # -1..1
+            avoid_turn = 0
 
-            # Remove sideways velocity
-            side_strength = max(0, 1 - alignment)
+            for building in RUNTIME_STATE["building_group"]:
+                if building.world_rect.collidepoint(probe_x, probe_y):
+                    print('Changing turn detected!')
+                    # Determine which side to turn
+                    bx, by = building.world_rect.center
+                    ox = bx - self.world_x
+                    oy = by - self.world_y
 
-            self.vx -= vx_n * side_strength * SIDE_DAMPING * dt * speed
-            self.vy -= vy_n * side_strength * SIDE_DAMPING * dt * speed
+                    obstacle_angle = math.degrees(math.atan2(-oy, ox)) % 360
+                    diff = angle_diff(obstacle_angle, self.angle)
 
-            turn_factor = abs(angle_diff(self.angle, movement_angle)) / 180
+                    # Turn away from obstacle
+                    avoid_turn = -1 if diff > 0 else 1
+                    break
 
-            self.vx *= 1 - turn_factor * TURN_DRAG * dt
-            self.vy *= 1 - turn_factor * TURN_DRAG * dt
 
-        if abs(self.vx) > 0.01 or abs(self.vy) > 0.01:
+
+            player = RUNTIME_STATE["player"]
+
+            dx = player.world_x - self.world_x
+            dy = player.world_y - self.world_y
+
+            target_angle = math.degrees(math.atan2(-dy, dx)) % 360
+
+            turn_error = angle_diff(target_angle, self.angle)
+
+
+            #Determine rather to run left or right
+            TURN_DEADZONE = 3 
+
+            turn_dir = 0
+
+            #Checking player
+            if turn_error > TURN_DEADZONE:
+                turn_dir -= 1
+            elif turn_error < -TURN_DEADZONE:
+                turn_dir += 1
+
+            #Checking obstacled
+            turn_dir += avoid_turn *  180  #Tuneable value
+
+            self.angle += turn_dir * effective_rot * dt
+
+
+
+            movement_angle = math.degrees(math.atan2(-self.vy, self.vx)) % 360
+
+            #if keys["up"] or keys["joy_up"]:
+            rad = math.radians(self.angle)
+            self.vx += math.cos(rad) * ACCEL * dt
+            self.vy -= math.sin(rad) * ACCEL * dt
             self.moving = True
-            self.move(self.vx, self.vy, speed=1, dt=dt)
+            
+            #Determine rather to stop or slow down
+            #if keys["back"]:
+            #    self.vx *= 0.975
+            #    self.vy *= 0.975
+
+            self.vx *= FRICTION
+            self.vy *= FRICTION
+
+            if avoid_turn != 0:
+                self.vx *= 0.97
+                self.vy *= 0.97
+
+            speed = math.hypot(self.vx, self.vy)
+            if speed > MAX_SPEED:
+                scale = MAX_SPEED / speed
+                self.vx *= scale
+                self.vy *= scale
+                speed = math.hypot(self.vx, self.vy)
+            if speed > 0.01:
+                # Facing direction vector
+                fx = math.cos(math.radians(self.angle))
+                fy = -math.sin(math.radians(self.angle))
+
+                # Velocity normalized
+                vx_n = self.vx / speed
+                vy_n = self.vy / speed
+
+                # Dot product: how aligned velocity is with facing
+                alignment = vx_n * fx + vy_n * fy  # -1..1
+
+                # Remove sideways velocity
+                side_strength = max(0, 1 - alignment)
+
+                self.vx -= vx_n * side_strength * SIDE_DAMPING * dt * speed
+                self.vy -= vy_n * side_strength * SIDE_DAMPING * dt * speed
+
+                turn_factor = abs(angle_diff(self.angle, movement_angle)) / 180
+
+                self.vx *= 1 - turn_factor * TURN_DRAG * dt
+                self.vy *= 1 - turn_factor * TURN_DRAG * dt
+
+            if abs(self.vx) > 0.01 or abs(self.vy) > 0.01:
+                self.moving = True
+                self.move(self.vx, self.vy, speed=1, dt=dt)
+            else:
+                if self.active:
+                    self.active = False
 
 
-    def move(self, dx, dy, speed, dt):
+    def old_move(self, dx, dy, speed, dt):
         move_x = dx * speed * dt * 4
         move_y = dy * speed * dt * 4
         angle = self.angle % 360
@@ -657,8 +769,12 @@ class Generic_Enemy(Individual_Sprite):
 
         if test_rect.colliderect(RUNTIME_STATE["player"].world_rect):
             print(f"Collision with player!")
-            RUNTIME_STATE["player_hp"] -= 1
-            RUNTIME_STATE["speed_mult"] -= .1
+            if not RUNTIME_STATE["player"].intangible:
+                RUNTIME_STATE["player_hp"] -= 1
+                RUNTIME_STATE["speed_mult"] = RUNTIME_STATE["min_speed_mult"]
+                RUNTIME_STATE["player"].intangible = True
+                RUNTIME_STATE["player"].intangible_frame = 1
+                RUNTIME_STATE["player"].intangible_start = pygame.time.get_ticks()
             self.vx *= -3.5
             self.vy *= -3.5
             #kill_and_delete(self)
@@ -718,6 +834,231 @@ class Generic_Enemy(Individual_Sprite):
             RUNTIME_STATE["bullets"].append(self.bullet)
             play_shoot_sound()
 
+    def move(self, dx, dy, speed, dt):
+        move_x = dx * speed * dt * 4
+        move_y = dy * speed * dt * 4
+        angle = self.angle % 360
+        if 0 <= angle < 15:
+            self.direction = '0'
+        elif 15 <= angle < 45:
+            self.direction = '30'
+        elif 45 <= angle < 75:
+            self.direction = '60'
+        elif 75 <= angle < 105:
+            self.direction = '90'
+        elif 105 <= angle < 135:
+            self.direction = '120'
+        elif 135 <= angle < 165:
+            self.direction = '150'
+        elif 165 <= angle < 195:
+            self.direction = '180'
+        elif 195 <= angle < 225:
+            self.direction = '210'
+        elif 225 <= angle < 255:
+            self.direction = '240'
+        elif 255 <= angle < 285:
+            self.direction = '270'
+        elif 285 <= angle < 315:
+            self.direction = '300'
+        elif 315 <= angle < 345:
+            self.direction = '330'
+        else:
+            self.direction = '0'
+
+        test_rect = self.world_rect.copy()
+        test_rect.topleft = (self.world_x - (move_x), self.world_y - (move_y))
+        collided=False
+        coll_speed = math.hypot(self.vx, self.vy)
+        if test_rect.colliderect(RUNTIME_STATE["player"].world_rect) and not RUNTIME_STATE["player"].collision_already_applied and coll_speed != 0:
+            # Normalize velocity
+            #RUNTIME_STATE["player"].move(self.vx, self.vy, speed=1, dt=dt)
+            vx_n = self.vx / coll_speed
+            vy_n = self.vy / coll_speed
+
+            dx_left   = test_rect.right - RUNTIME_STATE["player"].world_rect.left
+            dx_right  = RUNTIME_STATE["player"].world_rect.right - test_rect.left
+            dy_top    = test_rect.bottom - RUNTIME_STATE["player"].world_rect.top
+            dy_bottom = RUNTIME_STATE["player"].world_rect.bottom - test_rect.top
+
+            min_dx = min(dx_left, dx_right)
+            min_dy = min(dy_top, dy_bottom)
+
+            # Determine collision normal + resolve penetration
+            if min_dx < min_dy:
+                if dx_left < dx_right:
+                    test_rect.right = RUNTIME_STATE["player"].world_rect.left
+                    nx, ny = 1, 0
+                else:
+                    test_rect.left = RUNTIME_STATE["player"].world_rect.right
+                    nx, ny = -1, 0
+            else:
+                if dy_top < dy_bottom:
+                    test_rect.bottom = RUNTIME_STATE["player"].world_rect.top
+                    nx, ny = 0, 1
+                else:
+                    test_rect.top = RUNTIME_STATE["player"].world_rect.bottom
+                    nx, ny = 0, -1
+
+            # Reflect ONLY if moving into surface
+            dot = vx_n * nx + vy_n * ny
+            if dot < 0:
+                vx_n -= 5 * dot * nx
+                vy_n -= 5 * dot * ny
+
+                self.vx = vx_n * coll_speed
+                self.vy = vy_n * coll_speed
+
+                # Nudge out to avoid re-collision
+                test_rect.x += nx
+                test_rect.y += ny
+
+            self.world_x = test_rect.x
+            self.world_y = test_rect.y
+
+                    
+            collided=True
+        for enemy in RUNTIME_STATE["enemy_group"]:
+            #Need to add logic to bounce the enemy back too?
+            if enemy != self:
+                if test_rect.colliderect(enemy.world_rect):
+                    coll_speed = math.hypot(self.vx, self.vy)
+                    if coll_speed == 0:
+                        break
+
+                    # Normalize velocity
+                    vx_n = self.vx / coll_speed
+                    vy_n = self.vy / coll_speed
+
+                    dx_left   = test_rect.right - enemy.world_rect.left
+                    dx_right  = enemy.world_rect.right - test_rect.left
+                    dy_top    = test_rect.bottom - enemy.world_rect.top
+                    dy_bottom = enemy.world_rect.bottom - test_rect.top
+
+                    min_dx = min(dx_left, dx_right)
+                    min_dy = min(dy_top, dy_bottom)
+
+                    # Determine collision normal + resolve penetration
+                    if min_dx < min_dy:
+                        if dx_left < dx_right:
+                            test_rect.right = enemy.world_rect.left
+                            nx, ny = 1, 0
+                        else:
+                            test_rect.left = enemy.world_rect.right
+                            nx, ny = -1, 0
+                    else:
+                        if dy_top < dy_bottom:
+                            test_rect.bottom = enemy.world_rect.top
+                            nx, ny = 0, 1
+                        else:
+                            test_rect.top = enemy.world_rect.bottom
+                            nx, ny = 0, -1
+
+                    # Reflect ONLY if moving into surface
+                    dot = vx_n * nx + vy_n * ny
+                    if dot < 0:
+                        vx_n -= 5 * dot * nx
+                        vy_n -= 5 * dot * ny
+
+                        self.vx = vx_n * coll_speed
+                        self.vy = vy_n * coll_speed
+
+                        # Nudge out to avoid re-collision
+                        test_rect.x += nx
+                        test_rect.y += ny
+
+                    self.world_x = test_rect.x
+                    self.world_y = test_rect.y
+
+                    #if not self.shooting or (self.shooting and self.shoot_frame > 6): #Allow bonk to override cancellable portion of shooting
+                    #self.bonk = True
+                    #self.bonk_start = pygame.time.get_ticks()
+                    
+                    collided=True
+        for building in RUNTIME_STATE["building_group"]:
+            if test_rect.colliderect(building.world_rect):
+                coll_speed = math.hypot(self.vx, self.vy)
+                if coll_speed == 0:
+                    break
+
+                # Normalize velocity
+                vx_n = self.vx / coll_speed
+                vy_n = self.vy / coll_speed
+
+                dx_left   = test_rect.right - building.world_rect.left
+                dx_right  = building.world_rect.right - test_rect.left
+                dy_top    = test_rect.bottom - building.world_rect.top
+                dy_bottom = building.world_rect.bottom - test_rect.top
+
+                min_dx = min(dx_left, dx_right)
+                min_dy = min(dy_top, dy_bottom)
+
+                # Determine collision normal + resolve penetration
+                if min_dx < min_dy:
+                    if dx_left < dx_right:
+                        test_rect.right = building.world_rect.left
+                        nx, ny = 1, 0
+                    else:
+                        test_rect.left = building.world_rect.right
+                        nx, ny = -1, 0
+                else:
+                    if dy_top < dy_bottom:
+                        test_rect.bottom = building.world_rect.top
+                        nx, ny = 0, 1
+                    else:
+                        test_rect.top = building.world_rect.bottom
+                        nx, ny = 0, -1
+
+                # Reflect ONLY if moving into surface
+                dot = vx_n * nx + vy_n * ny
+                if dot < 0:
+                    vx_n -= 5 * dot * nx
+                    vy_n -= 5 * dot * ny
+
+                    self.vx = vx_n * coll_speed
+                    self.vy = vy_n * coll_speed
+
+                    # Nudge out to avoid re-collision
+                    test_rect.x += nx
+                    test_rect.y += ny
+
+                self.world_x = test_rect.x
+                self.world_y = test_rect.y
+
+                #if not self.shooting or (self.shooting and self.shoot_frame > 6): #Allow bonk to override cancellable portion of shooting
+                #    self.bonk = True
+                #    self.bonk_start = pygame.time.get_ticks()
+                
+                collided=True
+                #break
+
+
+
+        
+        self.character_moving_animation()
+        if not collided:
+            if self.moving:
+                self.world_x -= int(move_x)
+                self.world_y -= int(move_y)
+                self.world_rect.topleft = (
+                    int(self.world_x),
+                    int(self.world_y)
+                )
+                '''
+                if self.alert:
+                    self.alert.world_x -= int(move_x)
+                    self.alert.world_y -= int(move_y)
+                    self.alert.world_rect.topleft = (
+                    int(self.alert.world_x),
+                    int(self.alert.world_y)
+                    )
+                '''
+        else:
+            self.world_rect.topleft = (
+                int(self.world_x),
+                int(self.world_y)
+            )
+            error_selection_sound()
+
 
 
 
@@ -733,6 +1074,9 @@ class Enemy_Bullet(Individual_Sprite):
         self.bullet_dy = bullet_dy
         self.speed = speed
         self.enemy = enemy
+
+    def bullet_action(self):
+        self.move_bullet()
 
     def move_bullet(self):
         global RUNTIME_STATE
@@ -788,6 +1132,16 @@ class Bullet(Individual_Sprite):
         self.bullet_dx = bullet_dx
         self.bullet_dy = bullet_dy
         self.speed = speed
+        self.contact = False
+        self.contact_frame = 1
+        self.contact_start = None
+
+    def bullet_action(self):
+        if not self.contact:
+            self.move_bullet()
+        else:
+            self.contact_animation()
+
 
     def move_bullet(self):
         global RUNTIME_STATE
@@ -803,9 +1157,10 @@ class Bullet(Individual_Sprite):
                 print("Bullet Bottomright:", test_rect.bottomright)
                 print("Building Topleft:", building.world_rect.topleft)
                 print("Building Bottomright:", building.world_rect.bottomright)
-                RUNTIME_STATE["bullets"].remove(self)
-                kill_and_delete(self)
-                return
+                self.contact = True
+                self.contact_start = pygame.time.get_ticks()
+                play_building_collision_sound()
+                break
         for enemy in RUNTIME_STATE["enemy_group"]:
             if test_rect.colliderect(enemy.world_rect):
                 print(f"Collision!")
@@ -814,15 +1169,31 @@ class Bullet(Individual_Sprite):
                 print("Enemy Topleft:", building.world_rect.topleft)
                 print("Enemy Bottomright:", building.world_rect.bottomright)
                 enemy.take_damage()
-                RUNTIME_STATE["bullets"].remove(self)
-                kill_and_delete(self)
-                return
+                self.contact = True
+                self.contact_start = pygame.time.get_ticks()
+                play_collision_sound()
+                break
         self.world_x -= int(move_x)
         self.world_y -= int(move_y)
         self.world_rect.topleft = (
             int(self.world_x),
             int(self.world_y)
         )
+
+    def contact_animation(self):
+        curr_contact_frame = f"Weapons_Contact_{self.contact_frame:02d}.png"
+        current_time = pygame.time.get_ticks()
+        new_frame = int((current_time - self.contact_start)/50) + 1
+        new_contact_frame = f"Weapons_Contact_{(new_frame):02d}.png"
+        if new_frame <= 4:
+            if new_contact_frame != curr_contact_frame:
+                full_image = IMAGES_DICT[new_contact_frame]
+                self.surf = full_image
+                self.contact_frame = new_frame
+        else:
+            RUNTIME_STATE["bullets"].remove(self)
+            kill_and_delete(self)
+
 
 
 class Ducky_Sprite(Individual_Sprite):
@@ -851,24 +1222,39 @@ class Ducky_Sprite(Individual_Sprite):
             -HITBOX_MARGIN,
             -HITBOX_MARGIN
         )
+        self.shooting = False
+        self.shoot_frame = 1
+        self.shoot_start = None
+        self.intangible = False
+        self.intangible_frame = 1
+        self.intangible_start = None
+        self.frame_changed = False
+        self.previous_surf = self.surf
+        self.collision_already_applied = False
         
 
     def character_moving_animation(self):
-        if not self.bonk:
+        if not self.bonk and not self.shooting:
             if self.direction != self.previous_direction:
                 full_image = IMAGES_DICT[f"Ducky_{self.direction}.png"]
                 self.surf = full_image
                 self.previous_direction = self.direction
-        else:
+                self.frame_changed = True
+            else:
+                self.frame_changed = False
+        elif self.bonk and not self.shooting: #Shooting is always given priority over bonk
             curr_bonk_frame = f"Ducky_Bonk_{self.direction}_{self.bonk_frame:02d}.png"
             current_time = pygame.time.get_ticks()
             new_frame = int((current_time - self.bonk_start)/100) + 1
             new_bonk_frame = f"Ducky_Bonk_{self.direction}_{(new_frame):02d}.png"
-            if new_frame <= 6 and self.direction != '60':
+            if new_frame <= 6:
                 if new_bonk_frame != curr_bonk_frame:
                     full_image = IMAGES_DICT[new_bonk_frame]
                     self.surf = full_image
                     self.bonk_frame = new_frame
+                    self.frame_changed = True
+                else:
+                    self.frame_changed = False
             else:
                 full_image = IMAGES_DICT[f"Ducky_{self.direction}.png"]
                 self.surf = full_image
@@ -876,6 +1262,81 @@ class Ducky_Sprite(Individual_Sprite):
                 self.bonk = False
                 self.bonk_frame = 1
                 self.bonk_start = None
+                self.frame_changed = True
+        elif self.shooting:
+            #curr_shoot_frame = f"Ducky_DuckShooting_{self.direction}_{self.bonk_frame:02d}.png" #This will be correct when all directions work
+            curr_shoot_frame = f"Ducky_DuckShooting_{self.direction}_{self.shoot_frame:02d}.png"
+            current_time = pygame.time.get_ticks()
+            new_frame = int((current_time - self.shoot_start)/80) + 1
+            new_shoot_frame = f"Ducky_DuckShooting_{self.direction}_{(new_frame):02d}.png"
+            if new_frame <= 6:
+                if new_shoot_frame != curr_shoot_frame:
+                    if new_frame == 2:
+                        print()
+                        rad = math.radians(self.angle)
+                        dx = math.cos(rad)
+                        dy = -math.sin(rad)
+
+                        bullet_x = self.world_x - (64 * dx)
+                        bullet_y = self.world_y - (64 * dy)
+
+
+                        #make the speed static 500 for now
+                        speed=350 * RUNTIME_STATE["speed_mult"]
+                        new_bullet = Bullet(
+                            top_left=(bullet_x / scale_factor, bullet_y / scale_factor),
+                            bullet_dx=dx,
+                            bullet_dy=dy,
+                            speed=speed
+                        )
+
+                        RUNTIME_STATE["overworld_sprites"].add(new_bullet, layer=20)
+                        RUNTIME_STATE["bullets"].append(new_bullet)
+                        play_shoot_sound()
+                    full_image = IMAGES_DICT[new_shoot_frame]
+                    self.surf = full_image
+                    self.shoot_frame = new_frame
+                    self.frame_changed = True
+                else:
+                    self.frame_changed = False
+            else:
+                full_image = IMAGES_DICT[f"Ducky_{self.direction}.png"]
+                self.surf = full_image
+                self.previous_direction = self.direction
+                self.shooting = False
+                self.shoot_frame = 1
+                self.shoot_start = None
+                self.frame_changed = True
+        if self.frame_changed == True:
+            self.previous_surf = self.surf
+        if self.intangible:
+            current_frame = self.intangible_frame
+            current_time = pygame.time.get_ticks()
+            new_frame = int((current_time - self.intangible_start)/50) + 1
+            if new_frame <= 60:
+                if new_frame != current_frame:
+                    if new_frame % 2 == 0:
+                        print("even")
+                        self.previous_surf = self.surf
+                        intangible_image = "Ducky_Intangible.png"
+                        full_image = IMAGES_DICT[intangible_image]
+                        self.surf = full_image
+                        self.intangible_frame = new_frame
+                    else:
+                        print("odd")
+                        self.intangible_frame = new_frame
+                        self.surf = self.previous_surf
+                        self.previous_surf = self.surf
+            else:
+                full_image = IMAGES_DICT[f"Ducky_{self.direction}.png"]
+                self.surf = full_image
+                self.previous_direction = self.direction
+                self.intangible = False
+                self.intangible_frame = 1
+                self.intangible_start = None
+        
+
+
 
             
 
@@ -886,6 +1347,7 @@ class Ducky_Sprite(Individual_Sprite):
 
 
     def check_move(self):
+        self.collision_already_applied = False
         global RUNTIME_STATE
         keys = RUNTIME_STATE["pressed_keys"]
         self.moving = False
@@ -893,8 +1355,8 @@ class Ducky_Sprite(Individual_Sprite):
         dt = RUNTIME_STATE["delta_time"]
         if RUNTIME_STATE["speed_mult"] < RUNTIME_STATE["min_speed_mult"]:
             RUNTIME_STATE["speed_mult"] = RUNTIME_STATE["min_speed_mult"]
-        ROT_SPEED = 120
-        ACCEL = 250 * (RUNTIME_STATE["speed_mult"] ** RUNTIME_STATE["speed_mult"])
+        ROT_SPEED = 150
+        ACCEL = 300 * (RUNTIME_STATE["speed_mult"] ** RUNTIME_STATE["speed_mult"])
         MAX_SPEED = 1000 * RUNTIME_STATE["speed_mult"]
         SIDE_DAMPING = 6
         TURN_DRAG = 0.55
@@ -919,22 +1381,25 @@ class Ducky_Sprite(Individual_Sprite):
         self.vy -= math.sin(rad) * ACCEL * dt
         self.moving = True
         
-        if keys["back"]:
+        if keys["back"] and not self.bonk: #Do not allow braking while bonking
             speed_bonus = RUNTIME_STATE["speed_mult"] - 1
+            print(speed_bonus)
             if speed_bonus >= 1.0:
-                brake_mult = 0.9999995
-            elif speed_bonus >= 0.8:
                 brake_mult = 0.999995
-            elif speed_bonus >= 0.6:
+            elif speed_bonus >= 0.8:
                 brake_mult = 0.99995
-            elif speed_bonus >= 0.4:
+            elif speed_bonus >= 0.6:
                 brake_mult = 0.9995
-            elif speed_bonus >= 0.2:
+            elif speed_bonus >= 0.4:
                 brake_mult = 0.995
-            elif speed_bonus >= 0:
+            elif speed_bonus >= 0.2:
                 brake_mult = 0.95
+            elif speed_bonus >= 0:
+                print('nope here')
+                brake_mult = 0.85
             else:
-                brake_mult = 0.9
+                print('check here check here')
+                brake_mult = 0.85
             self.vx *= brake_mult
             self.vy *= brake_mult
 
@@ -975,26 +1440,11 @@ class Ducky_Sprite(Individual_Sprite):
             self.move(self.vx, self.vy, speed=1, dt=dt)
 
         if RUNTIME_STATE["just_pressed"] and RUNTIME_STATE["just_pressed"]["action"]:
-            rad = math.radians(self.angle)
-            dx = math.cos(rad)
-            dy = -math.sin(rad)
-
-            bullet_x = self.world_x - (64 * dx)
-            bullet_y = self.world_y - (64 * dy)
-
-
-            #make the speed static 500 for now
-            speed=350 * RUNTIME_STATE["speed_mult"]
-            new_bullet = Bullet(
-                top_left=(bullet_x / scale_factor, bullet_y / scale_factor),
-                bullet_dx=dx,
-                bullet_dy=dy,
-                speed=speed
-            )
-
-            RUNTIME_STATE["overworld_sprites"].add(new_bullet, layer=20)
-            RUNTIME_STATE["bullets"].append(new_bullet)
-            play_shoot_sound()
+            if not self.shooting or (self.shooting and self.shoot_frame > 2): #Allow animation cancelling after shooting
+                self.shooting = True
+                self.shoot_start = pygame.time.get_ticks()
+                self.shoot_frame = 2 #In case of animation cancel
+            
         RUNTIME_STATE["camera"].follow(self)
 
     def move(self, dx, dy, speed, dt):
@@ -1030,30 +1480,83 @@ class Ducky_Sprite(Individual_Sprite):
 
         test_rect = self.world_rect.copy()
         test_rect.topleft = (self.world_x - (move_x), self.world_y - (move_y))
+        #Old logic
+        #New logic
+        collided=False
         for enemy in RUNTIME_STATE["enemy_group"]:
+            #Need to add logic to bounce the enemy back too?
             if test_rect.colliderect(enemy.world_rect):
-                self.bonk = True
-                self.bonk_start = pygame.time.get_ticks()
-                self.moving = False
-                if abs(self.vx) + abs(self.vy) < 5:
-                    
-                    self.vx = sign(self.vx) * 7.5
-                    self.vy = sign(self.vy) * 7.5
+                coll_speed = math.hypot(self.vx, self.vy)
+                if coll_speed == 0:
+                    break
+                enemy.move(self.vx, self.vy, speed=1, dt=dt)
+
+                # Normalize velocity
+                vx_n = self.vx / coll_speed
+                vy_n = self.vy / coll_speed
+
+                dx_left   = test_rect.right - enemy.world_rect.left
+                dx_right  = enemy.world_rect.right - test_rect.left
+                dy_top    = test_rect.bottom - enemy.world_rect.top
+                dy_bottom = enemy.world_rect.bottom - test_rect.top
+
+                min_dx = min(dx_left, dx_right)
+                min_dy = min(dy_top, dy_bottom)
+
+                # Determine collision normal + resolve penetration
+                if min_dx < min_dy:
+                    if dx_left < dx_right:
+                        test_rect.right = enemy.world_rect.left
+                        nx, ny = 1, 0
+                    else:
+                        test_rect.left = enemy.world_rect.right
+                        nx, ny = -1, 0
                 else:
-                    self.vx *= -7.5
-                    self.vy *= -7.5
-                RUNTIME_STATE["speed_mult"] -= .05
-                error_selection_sound()
-                break
+                    if dy_top < dy_bottom:
+                        test_rect.bottom = enemy.world_rect.top
+                        nx, ny = 0, 1
+                    else:
+                        test_rect.top = enemy.world_rect.bottom
+                        nx, ny = 0, -1
+
+                # Reflect ONLY if moving into surface
+                dot = vx_n * nx + vy_n * ny
+                if dot < 0:
+                    vx_n -= 5 * dot * nx
+                    vy_n -= 5 * dot * ny
+
+                    self.vx = vx_n * coll_speed
+                    self.vy = vy_n * coll_speed
+
+                    # Nudge out to avoid re-collision
+                    test_rect.x += nx
+                    test_rect.y += ny
+
+                self.world_x = test_rect.x
+                self.world_y = test_rect.y
+
+                if not self.shooting or (self.shooting and self.shoot_frame > 2): #Allow bonk to override cancellable portion of shooting
+                    self.bonk = True
+                    self.bonk_start = pygame.time.get_ticks()
+                
+                collided=True
+                if not self.intangible:
+                    RUNTIME_STATE["player_hp"] -= 1
+                    RUNTIME_STATE["speed_mult"] = RUNTIME_STATE["min_speed_mult"]
+                    self.intangible = True
+                    self.intangible_frame = 1
+                    self.intangible_start = pygame.time.get_ticks()
+                
         for building in RUNTIME_STATE["building_group"]:
             if test_rect.colliderect(building.world_rect):
-                self.bonk = True
-                self.bonk_start = pygame.time.get_ticks()
-                print(f"Collision!")
-                print("Player Topleft:", test_rect.topleft)
-                print("Player Bottomright:", test_rect.bottomright)
-                print("Building Topleft:", building.world_rect.topleft)
-                print("Building Bottomright:", building.world_rect.bottomright)
+                coll_speed = math.hypot(self.vx, self.vy)
+                if coll_speed == 0:
+                    break
+
+                # Normalize velocity
+                vx_n = self.vx / coll_speed
+                vy_n = self.vy / coll_speed
+
                 dx_left   = test_rect.right - building.world_rect.left
                 dx_right  = building.world_rect.right - test_rect.left
                 dy_top    = test_rect.bottom - building.world_rect.top
@@ -1061,26 +1564,67 @@ class Ducky_Sprite(Individual_Sprite):
 
                 min_dx = min(dx_left, dx_right)
                 min_dy = min(dy_top, dy_bottom)
+
+                # Determine collision normal + resolve penetration
                 if min_dx < min_dy:
-                    # Hit left or right side → bounce vertically
-                    self.vx *= -7.5
-                    self.vy *= 7.5
+                    if dx_left < dx_right:
+                        test_rect.right = building.world_rect.left
+                        nx, ny = 1, 0
+                    else:
+                        test_rect.left = building.world_rect.right
+                        nx, ny = -1, 0
                 else:
-                    # Hit top or bottom → bounce horizontally
-                    self.vx *= 7.5
-                    self.vy *= -7.5
-                RUNTIME_STATE["speed_mult"] -= .05
-                error_selection_sound()
-                break
+                    if dy_top < dy_bottom:
+                        test_rect.bottom = building.world_rect.top
+                        nx, ny = 0, 1
+                    else:
+                        test_rect.top = building.world_rect.bottom
+                        nx, ny = 0, -1
+
+                # Reflect ONLY if moving into surface
+                dot = vx_n * nx + vy_n * ny
+                if dot < 0:
+                    vx_n -= 5 * dot * nx
+                    vy_n -= 5 * dot * ny
+
+                    self.vx = vx_n * coll_speed
+                    self.vy = vy_n * coll_speed
+
+                    # Nudge out to avoid re-collision
+                    test_rect.x += nx
+                    test_rect.y += ny
+
+                self.world_x = test_rect.x
+                self.world_y = test_rect.y
+
+                if not self.shooting or (self.shooting and self.shoot_frame > 2): #Allow bonk to override cancellable portion of shooting
+                    self.bonk = True
+                    self.bonk_start = pygame.time.get_ticks()
+                
+                collided=True
+                #break
+
+
+
         
         self.character_moving_animation()
-        if self.moving:
-            self.world_x -= int(move_x)
-            self.world_y -= int(move_y)
+        if not collided:
+            if self.moving:
+                self.world_x -= int(move_x)
+                self.world_y -= int(move_y)
+                self.world_rect.topleft = (
+                    int(self.world_x),
+                    int(self.world_y)
+                )
+        else:
             self.world_rect.topleft = (
                 int(self.world_x),
                 int(self.world_y)
             )
+            self.collision_already_applied = True
+            error_selection_sound()
+            RUNTIME_STATE["speed_mult"] -= .01
+
             
 
 #---------CAMERA
@@ -1649,8 +2193,9 @@ def initialize_overworld():
         #RUNTIME_STATE["TopStatusBar"].update_curr_text()
         for sprite in RUNTIME_STATE["TopStatusBar"]:
             RUNTIME_STATE["ui_sprites"].add(sprite, layer=6)
-        music_channel.stop()
-        music_channel.play(night_music_sound)
+        FADE_TIME = 1000  # milliseconds (1 second)
+        music_channel.fadeout(FADE_TIME)
+        music_channel.play(battle_music_sound, loops=-1, fade_ms=FADE_TIME)
         RUNTIME_STATE["tileset_current"] = True
 
 def update_top_display():
@@ -1772,7 +2317,7 @@ def overworld_phase():
             enemy.determine_action()
         if RUNTIME_STATE["bullets"] != []:
             for bullet in RUNTIME_STATE["bullets"]:
-                bullet.move_bullet()
+                bullet.bullet_action()
         for entity in RUNTIME_STATE["overworld_sprites"]:
             entity.update()
         if RUNTIME_STATE["tileset_current"]:
@@ -1804,6 +2349,10 @@ def levelclear_phase():
         if RUNTIME_STATE["just_pressed"] and RUNTIME_STATE["just_pressed"]["action"]:
             print('ENTER HIT ENTER HIT ENTER HIT')
             RUNTIME_STATE["level_cleared_tick"] = None
+            if RUNTIME_STATE["bullets"] != []:
+                for bullet in reversed(RUNTIME_STATE["bullets"]):
+                    kill_and_delete(bullet)
+                RUNTIME_STATE["bullets"] = []
             RUNTIME_STATE["current_phase"] = transition_phase
 
 def transition_phase():
@@ -1823,6 +2372,9 @@ def transition_phase():
                     RUNTIME_STATE["title_screen"] = Diner_Screen()
                     RUNTIME_STATE["ui_sprites"].add(RUNTIME_STATE["title_screen"], layer=1)
                     RUNTIME_STATE["end_overlay"] = None
+                    FADE_TIME = 1000
+                    music_channel.fadeout(FADE_TIME)
+                    music_channel.play(main_music_sound, loops=-1, fade_ms=FADE_TIME)
         elif RUNTIME_STATE["black_screen"].decrease_alpha:
             RUNTIME_STATE["black_screen"].fade_out()
         else:
@@ -1943,7 +2495,7 @@ RUNTIME_STATE = {
 "speed_mult": 1.0,
 "player_hp": 7,
 "end_overlay": None,
-"level": 0,
+"level": 0, #should be 0
 "level_cleared_tick": None,
 "black_screen": None,
 "DinerTalkBox": None,
@@ -2050,21 +2602,32 @@ def play_faint_sound():
 def play_shoot_sound():
     gunshot_channel.play(SFX_DICT["SFX_gunshot_replace.mp3"])
 
+def play_alert_sound():
+    alert_channel.play(SFX_DICT["SFX_PigeonAlert.wav"])
+
+def play_collision_sound():
+    collision_channel.play(SFX_DICT["SFX_Collision.wav"])
+
+def play_building_collision_sound():
+    collision_channel.play(SFX_DICT["SFX_BuildingCollision.wav"])
+
 #---------MUSIC
 music_channel = pygame.mixer.Channel(0)
 
 music_folder_path = os.path.join(PATH_START, "Music") #Music regularly
-night_music_path = os.path.join(music_folder_path, "Night.mp3")
-night_music_sound = pygame.mixer.Sound(night_music_path)
-forest_music_path = os.path.join(music_folder_path, "AutumnForest.wav")
-forest_music_sound = pygame.mixer.Sound(forest_music_path)
+battle_music_path = os.path.join(music_folder_path, "Ducky fight sketch 04_02_26.mp3")
+battle_music_sound = pygame.mixer.Sound(battle_music_path)
+main_theme_path = os.path.join(music_folder_path, "Main theme sketch 03_02_26.mp3")
+main_music_sound = pygame.mixer.Sound(main_theme_path)
 
-music_channel.play(forest_music_sound, loops=-1)  # loops=-1 for infinite loop
+music_channel.play(main_music_sound, loops=-1)  # loops=-1 for infinite loop
 menu_sfx_channel = pygame.mixer.Channel(1)  # Find an available channel
 walking_sfx_channel = pygame.mixer.Channel(2)
 damage_channel = pygame.mixer.Channel(3)
 faint_channel = pygame.mixer.Channel(4)
 gunshot_channel = pygame.mixer.Channel(5)
+alert_channel = pygame.mixer.Channel(6)
+collision_channel = pygame.mixer.Channel(7)
 gunshot_channel.set_volume(0.6)
 
 #---------MAIN LOGIC
@@ -2110,18 +2673,32 @@ def main():
 
 main()
 
-#Next steps:
-#Figure out level design ideas
-#Speech 1-Mention moving forward automatically, space to break, turning like a boat.  
-#Level 1-Tutorial for movement-Linear path, 1 enemy at the end
-#Speech 2-Mention shooting to gain speed mult and move faster, but breaking will be less effective. Taking damage will lower or reset speed mult
+
+#Current issues:
+#Enemies do not damage Ducky correctly
+
+
+#LEVELS AND PROGRESS
+#1 (MOSTLY DONE, NEED TO UPDATE SITTING DUCK AND MAYBE RE-VISE SPEECH)
+#Speech 1-Mention moving forward automatically, space to break, turning like a boat. (DONE)
+#Level 1-Tutorial for movement-Linear path, 1 enemy at the end (DONE)
+#2
+#Speech 2-Mention shooting to gain speed mult and move faster, but breaking will be less effective. Taking damage will lower or reset speed mult (DONE)
 #Level 2-Tutorial for combo system, still only stationary enemies
+#3
 #Speech 3-Mention buffs that can raise your damage dealt and minimum speed mult.
-#Level 3-Introduce chasing enemies
+#Level 3-Introduce chasing enemies. Lots of blocks to hide behind. 
+#Enemy chaser:
+#Collision works enough
+#Kinda dumb but that's part of the appeal
+
 #Speech 4-Mention that if Slick keeps up the good work, he can come aboard the train
-#Level 4-Tons of chasing enemies
+#Level 4-Tons of chasing enemies. Maybe some stationary ones? Introduce the destrucable blocks as well. 
+
 #Level 5-Introduce fish enemies
+
 #Level 6 onward-???, swap to train local for later levels
+
 #Final level-boss fight with Don Pigeon
 
 #Why is the player killing all the birds?
@@ -2147,9 +2724,7 @@ main()
 #Fix issues with rate of fire
 #Should either be allowed x number of bullets or fire every x seconds
 
-#Enemy chaser:
-#Fix issues with objects being in path-some work done, but not working too great yet
-#Bounce animation could be added? Not super high priority
+
 
 #Add enemy fish
 #A bit different from idle enemy

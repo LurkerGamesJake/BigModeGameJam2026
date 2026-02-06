@@ -11,7 +11,7 @@ Speech	Line	Options	TalkingHead
 1	"???: The more punks you whack, the higher your speed mult goes."	No	Mystery
 1	"???: The faster you'll go, too. But you'll have a harder time braking. "	No	Mystery
 1	"???: If you bump into something, your speed mult will go down."	No	Mystery
-1	"???: And god forbid someone shootcha, the whole thing will reset."	No	Mystery
+1	"???: And god forbid someone shootcha or hits ya, the whole thing will reset."	No	Mystery
 1	"???: Alright, enough yammerin'. Get out there kid."	No	Mystery
 2	"???: Look who it is! Alright kid, allow me to formally introduce myself."	No	Mystery
 2	???: The name's Don Pigeon. I hear you wanna be made capo?	No	Don_Pigeon
