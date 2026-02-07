@@ -171,11 +171,9 @@ class Individual_Sprite(pygame.sprite.Sprite):
     def __init__(self, image_key, subsurface_rect, start_pos, tile_number=None, uses_alpha=False):
         super().__init__()
         self.full_image = IMAGES_DICT[image_key]
-        #print(self.full_image.get_rect())
         #Needs re-written for new logic
         if subsurface_rect is not None:
             subsurface_rect = tuple(int(v * scale_factor) for v in subsurface_rect)
-            #print(subsurface_rect)
             self.surf = self.full_image.subsurface(subsurface_rect)
         else:
             self.surf = self.full_image
@@ -325,8 +323,8 @@ class Enemy_Alert(Individual_Sprite):
 
         self.start_time = pygame.time.get_ticks()
 
-        self.HOLD_TIME = 500      # ms (no fade)
-        self.FADE_TIME = 500      # ms (fade duration)
+        self.HOLD_TIME = 500
+        self.FADE_TIME = 500
 
         self.START_ALPHA = 122
         self.surf.set_alpha(self.START_ALPHA)
@@ -399,6 +397,96 @@ class Tile(Individual_Sprite):
             self.tile_number = tile_number
         self.displayed_tile = str(tile_number)
 
+class SpeedMeter(Individual_Sprite):
+    def __init__(self):
+        super().__init__(
+            image_key="UI_BodySpeedMeter.png",
+            subsurface_rect=None,
+            start_pos=['tl', (520,240)]
+        )
+        
+class SpeedNeedle(Individual_Sprite):
+    def __init__(self):
+        super().__init__(
+            image_key=f"UI_SpeadMeterNeddles_0.png",
+            subsurface_rect=None,
+            start_pos=['tl', (520,240)]
+        )
+
+class HP_Heart(Individual_Sprite):
+    def __init__(self, top_left=(16, 16)):
+        super().__init__(
+            image_key="UI_Heart_01.png",
+            subsurface_rect=None,
+            start_pos=['tl', top_left]
+        )
+        self.dead = False
+        self.frame = 1
+        self.direction = 1
+        self.frame_time = 400
+        self.last_frame_tick = pygame.time.get_ticks()
+        
+
+    def animate_heart(self):
+        if not self.dead:
+            self.animate_heart_regular()
+        else:
+            self.animate_dead_heart()
+
+    def start_dead_heart(self):
+        self.dead = True
+        self.dead_start_time = pygame.time.get_ticks()
+        self.last_frame_tick = self.dead_start_time
+        self.HOLD_TIME = 500
+        self.FADE_TIME = 500
+        frame_key = f"UI_HeartBreak.png"
+        self.surf = IMAGES_DICT[frame_key].copy()
+        self.START_ALPHA = 122
+
+    def animate_dead_heart(self):
+        now = pygame.time.get_ticks()
+        elapsed = now - self.dead_start_time
+
+        # Phase 1: hold
+        if elapsed < self.HOLD_TIME:
+            return
+
+        # Phase 2: fade
+        fade_elapsed = elapsed - self.HOLD_TIME
+        fade_ratio = min(fade_elapsed / self.FADE_TIME, 1.0)
+
+        new_alpha = int(self.START_ALPHA * (1 - fade_ratio))
+        self.surf.set_alpha(new_alpha)
+
+        if fade_ratio >= 1.0:
+            RUNTIME_STATE["dead_hearts_list"].remove(self)
+            kill_and_delete(self)
+
+
+
+    def animate_heart_regular(self):
+        now = pygame.time.get_ticks()
+
+        if now - self.last_frame_tick < self.frame_time:
+            return
+
+        self.last_frame_tick = now
+
+        # Advance frame
+        self.frame += self.direction
+
+        # Bounce at ends
+        if self.frame >= 3:
+            self.frame = 3
+            self.direction = -1
+        elif self.frame <= 1:
+            self.frame = 1
+            self.direction = 1
+
+        # Update sprite
+        frame_key = f"UI_Heart_{self.frame:02d}.png"
+        self.surf = IMAGES_DICT[frame_key]
+
 class Overworld_Main_Text_box(Individual_Sprite):
     def __init__(self, top_left=(0,317)):
         super().__init__(
@@ -455,6 +543,8 @@ class Generic_Enemy(Individual_Sprite):
     def __init__(self, top_left, enemy_class, df_pos=None):
         if enemy_class == 'Fish':
             enemy_image = f"FishHole_01"
+        elif enemy_class == 'Walrus':
+            enemy_image = f"WalrusIdle_0_01"
         elif enemy_class != 'Test':
             enemy_image = f"{enemy_class}_90"
         else:
@@ -466,7 +556,10 @@ class Generic_Enemy(Individual_Sprite):
         )
         self.df_pos = df_pos
         self.enemy_class = enemy_class
-        self.hp = 2
+        if enemy_class == 'Fish':
+            self.hp = 2
+        else:
+            self.hp = 2
         self.bullet = None
         self.last_shot_time = -3000
         self.direction = '90'
@@ -485,22 +578,65 @@ class Generic_Enemy(Individual_Sprite):
             self.state = 'Hole'
             self.state_frame = 1
             self.state_start_time = pygame.time.get_ticks()
+            self.player_near = False
+            self.player_side = 'Right'
+            self.just_shot = False
+        elif self.enemy_class == 'Walrus':
+            self.state = 'Idle'
+            self.state_frame = 1
+            self.state_start_time = pygame.time.get_ticks()
+        else:
+            self.state = None
 
     def take_damage(self):
         self.hp -= RUNTIME_STATE["damage"]
         if self.hp <= 0:
-            RUNTIME_STATE["speed_mult"] += .1
-            play_faint_sound()
-            kill_and_delete(self)
+            if self.enemy_class == 'Fish':
+                if self.state != 'RIP':
+                    full_image = IMAGES_DICT[f"Enemies_FishRIP_180_01_{self.player_side}.png"]
+                    self.surf = full_image
+                    self.state = 'RIP'
+                    self.state_frame = 1
+                    self.state_start_time = pygame.time.get_ticks()
+                    RUNTIME_STATE["speed_mult"] += .1
+                    if self.alert:
+                        kill_and_delete(self.alert)
+            elif self.enemy_class == 'Walrus':
+                if self.state != 'RIP':
+                    full_image = IMAGES_DICT[f"Enemies_WalrusRIP_0_01.png"]
+                    self.surf = full_image
+                    self.state = 'RIP'
+                    self.state_frame = 1
+                    self.state_start_time = pygame.time.get_ticks()
+                    RUNTIME_STATE["speed_mult"] += .1
+            else:
+                RUNTIME_STATE["speed_mult"] += .1
+                play_faint_sound()
+                if self.alert:
+                    kill_and_delete(self.alert)
+                kill_and_delete(self)
         else:
+            if self.enemy_class == 'Fish':
+                full_image = IMAGES_DICT[f"Enemies_FishDamage_180_01_{self.player_side}.png"]
+                self.surf = full_image
+                self.state = 'Damage'
+                self.state_frame = 1
+                self.state_start_time = pygame.time.get_ticks()
+            elif self.enemy_class == 'Walrus':
+                full_image = IMAGES_DICT[f"Enemies_WalrusDamage_0_01.png"]
+                self.surf = full_image
+                self.state = 'Damage'
+                self.state_frame = 1
+                self.state_start_time = pygame.time.get_ticks()
             play_damage_sound()
 
     def determine_action(self):
-        #print(self.enemy_class)
         if self.enemy_class == 'Pigeon':
             self.follow_player()
         elif self.enemy_class == 'Fish':
             self.fish_action()
+        elif self.enemy_class == 'Walrus':
+            self.walrus_action()
         elif self.enemy_class == 'Sleepy':
             return
         else:
@@ -508,26 +644,204 @@ class Generic_Enemy(Individual_Sprite):
         if self.alert:
             self.sync_alert()
 
+    def walrus_action(self):
+        print('walrus action')
+        if self.state == 'RIP':
+            curr_hole_frame = f"Enemies_WalrusRIP_0_{self.state_frame:02d}.png"
+            current_time = pygame.time.get_ticks()
+            new_frame = min(int((current_time - self.state_start_time)/100) + 1, 7)
+            new_hole_frame = f"Enemies_WalrusRIP_0_{new_frame:02d}.png"
+            if new_frame <= 6:
+                if new_hole_frame != curr_hole_frame:
+                    full_image = IMAGES_DICT[new_hole_frame]
+                    self.surf = full_image
+                    self.state_frame = new_frame
+            else:
+                play_faint_sound()
+                kill_and_delete(self)
+        elif self.state == 'Damage':
+            curr_hole_frame = f"Enemies_WalrusDamage_0_{self.state_frame:02d}.png"
+            current_time = pygame.time.get_ticks()
+            new_frame = min(int((current_time - self.state_start_time)/100) + 1, 7)
+            new_hole_frame = f"Enemies_WalrusDamage_0_{new_frame:02d}.png"
+            if new_frame <= 6:
+                if new_hole_frame != curr_hole_frame:
+                    full_image = IMAGES_DICT[new_hole_frame]
+                    self.surf = full_image
+                    self.state_frame = new_frame
+            else:
+                full_image = IMAGES_DICT[f"Enemies_WalrusIdle_0_01.png"]
+                self.surf = full_image
+                self.state = 'Idle'
+                self.state_frame = 1
+                self.state_start_time = pygame.time.get_ticks()
+        elif self.state == 'Idle':
+            print('walrus idle')
+            curr_hole_frame = f"Enemies_WalrusIdle_0_{self.state_frame:02d}.png"
+            current_time = pygame.time.get_ticks()
+            new_frame = min(int((current_time - self.state_start_time)/100) + 1, 7)
+            new_hole_frame = f"Enemies_WalrusIdle_0_{new_frame:02d}.png"
+            if new_frame <= 6:
+                if new_hole_frame != curr_hole_frame:
+                    full_image = IMAGES_DICT[new_hole_frame]
+                    self.surf = full_image
+                    self.state_frame = new_frame
+            else:
+                full_image = IMAGES_DICT[f"Enemies_WalrusIdle_0_01.png"]
+                self.surf = full_image
+                self.state_frame = 1
+                self.state_start_time = pygame.time.get_ticks()
+
+
     def fish_action(self):
-        print('doing a fish action')
-        if self.state == 'Hole':
-            print('yeah its hole')
+        self.fish_check_player_distance()
+        if self.state != 'Idle':
+            self.just_shot = False
+        if self.state == 'RIP':
+            curr_hole_frame = f"Enemies_FishRIP_180_{self.state_frame:02d}_{self.player_side}.png"
+            current_time = pygame.time.get_ticks()
+            new_frame = min(int((current_time - self.state_start_time)/100) + 1, 5)
+            new_hole_frame = f"Enemies_FishRIP_180_{new_frame:02d}_{self.player_side}.png"
+            if new_frame <= 4:
+                if new_hole_frame != curr_hole_frame:
+                    full_image = IMAGES_DICT[new_hole_frame]
+                    self.surf = full_image
+                    self.state_frame = new_frame
+            else:
+                play_faint_sound()
+                kill_and_delete(self)
+        elif self.state == 'Damage':
+            curr_hole_frame = f"Enemies_FishDamage_180_{self.state_frame:02d}_{self.player_side}.png"
+            current_time = pygame.time.get_ticks()
+            new_frame = min(int((current_time - self.state_start_time)/100) + 1, 5)
+            new_hole_frame = f"Enemies_FishDamage_180_{new_frame:02d}_{self.player_side}.png"
+            if new_frame <= 4:
+                if new_hole_frame != curr_hole_frame:
+                    full_image = IMAGES_DICT[new_hole_frame]
+                    self.surf = full_image
+                    self.state_frame = new_frame
+            else:
+                full_image = IMAGES_DICT[f"Enemies_FishIdle_01_{self.player_side}.png"]
+                self.surf = full_image
+                self.state = 'Idle'
+                self.state_frame = 1
+                self.state_start_time = pygame.time.get_ticks()
+        elif self.state == 'Hole':
             curr_hole_frame = f"Enemies_FishHole_{self.state_frame:02d}.png"
             current_time = pygame.time.get_ticks()
             new_frame = min(int((current_time - self.state_start_time)/100) + 1, 7)
-            print(new_frame)
             new_hole_frame = f"Enemies_FishHole_{new_frame:02d}.png"
             if new_frame <= 6:
-                print('yeah its more than 6 thats for sure')
                 if new_hole_frame != curr_hole_frame:
-                    print(new_hole_frame)
                     full_image = IMAGES_DICT[new_hole_frame]
                     self.surf = full_image
                     self.state_frame = new_frame
             else:
                 full_image = IMAGES_DICT[f"Enemies_FishHole_01.png"]
+                self.surf = full_image
                 self.state_frame = 1
                 self.state_start_time = pygame.time.get_ticks()
+        elif self.state == 'Idle':
+            curr_idle_frame = f"Enemies_FishIdle_{self.state_frame:02d}_{self.player_side}.png"
+            current_time = pygame.time.get_ticks()
+            new_frame = min(int((current_time - self.state_start_time)/100) + 1, 7)
+            new_idle_frame = f"Enemies_FishIdle_{new_frame:02d}_{self.player_side}.png"
+            if new_frame <= 6:
+                if new_idle_frame != curr_idle_frame:
+                    if new_frame == 3:
+                        if self.just_shot == False and new_frame >= self.state_frame:
+                            angle = math.degrees(
+                            math.atan2(
+                                    -(RUNTIME_STATE["player"].world_y - self.world_y),
+                                    RUNTIME_STATE["player"].world_x - self.world_x
+                                )
+                            ) % 360
+                            rad = math.radians(angle)
+                            dx = -math.cos(rad)
+                            dy = math.sin(rad)
+
+                            BULLET_SPEED = 80
+                            if self.player_side == 'Right':
+                                bullet_x = self.world_x + 10 * scale_factor
+                            else:
+                                bullet_x = self.world_x - 4 * scale_factor
+                            bullet_y = self.world_y
+
+                            bullet = Bullet(
+                                top_left=(bullet_x/scale_factor, bullet_y/scale_factor),
+                                bullet_dx=dx,
+                                bullet_dy=dy,
+                                speed=BULLET_SPEED,
+                                bullet_type='Fish',
+                                enemy=self
+                            )
+
+                            RUNTIME_STATE["overworld_sprites"].add(bullet, layer=20)
+                            RUNTIME_STATE["bullets"].append(bullet)
+                            play_fish_shoot_sound()
+                            self.just_shot = True
+                        else:
+                            new_frame += 1
+                            new_idle_frame = f"Enemies_FishIdle_{new_frame:02d}_{self.player_side}.png"
+                            self.just_shot = False
+                    full_image = IMAGES_DICT[new_idle_frame]
+                    self.surf = full_image
+                    self.state_frame = new_frame
+            else:
+                if self.player_near:
+                    full_image = IMAGES_DICT[f"Enemies_FishIdle_01_{self.player_side}.png"]
+                    self.surf = full_image
+                    self.state_frame = 1
+                    self.state_start_time = pygame.time.get_ticks()
+                else:
+                    full_image = IMAGES_DICT[f"Enemies_FishShot_01_{self.player_side}.png"]
+                    self.surf = full_image
+                    self.state = 'Shot'
+                    self.state_frame = 1
+                    self.state_start_time = pygame.time.get_ticks()
+                    play_fish_dive_sound()
+        elif self.state == 'Shot':
+            curr_shot_frame = f"Enemies_FishShot_{self.state_frame:02d}_{self.player_side}.png"
+            current_time = pygame.time.get_ticks()
+            new_frame = min(int((current_time - self.state_start_time)/100) + 1, 13)
+            new_shot_frame = f"Enemies_FishShot_{new_frame:02d}_{self.player_side}.png"
+            if new_frame <= 6:
+                if new_shot_frame != curr_shot_frame:
+                    full_image = IMAGES_DICT[new_shot_frame]
+                    self.surf = full_image
+                    self.state_frame = new_frame
+            else:
+                full_image = IMAGES_DICT[f"Enemies_FishHole_01.png"]
+                self.surf = full_image
+                self.state = 'Hole'
+                self.state_frame = 1
+                self.state_start_time = pygame.time.get_ticks()
+
+        
+
+    def fish_check_player_distance(self):
+        global RUNTIME_STATE
+        if RUNTIME_STATE["player"].world_x < self.world_x:
+            self.player_side = "Left"
+        else:
+            self.player_side = "Right"
+        dx = RUNTIME_STATE["player"].world_x - self.world_x
+        dy = RUNTIME_STATE["player"].world_y - self.world_y
+        length = math.hypot(dx, dy)
+        if length > 200 * scale_factor:
+            self.player_near = False
+            
+        else:
+            if self.state == 'Hole':
+                self.alert = Enemy_Alert(start_pos=(self.world_x/scale_factor + 3, self.world_y/scale_factor +7))
+                RUNTIME_STATE["overworld_sprites"].add(self.alert, layer=15)
+                full_image = IMAGES_DICT[f"Enemies_FishIdle_01_{self.player_side}.png"]
+                self.surf = full_image
+                self.state_frame = 1
+                play_fish_emerge_sound()
+                self.state = 'Idle'
+            self.player_near = True
+
 
 
     def sync_alert(self):
@@ -569,7 +883,6 @@ class Generic_Enemy(Individual_Sprite):
             
         else:
             if not self.active:
-                print('do alert')
                 self.alert = Enemy_Alert(start_pos=(self.world_x/scale_factor + 3, self.world_y/scale_factor +7))
                 RUNTIME_STATE["overworld_sprites"].add(self.alert, layer=15)
                 play_alert_sound()
@@ -602,7 +915,6 @@ class Generic_Enemy(Individual_Sprite):
 
             for building in RUNTIME_STATE["building_group"]:
                 if building.world_rect.collidepoint(probe_x, probe_y):
-                    print('Changing turn detected!')
                     # Determine which side to turn
                     bx, by = building.world_rect.center
                     ox = bx - self.world_x
@@ -737,11 +1049,6 @@ class Generic_Enemy(Individual_Sprite):
         test_rect.topleft = (self.world_x - (move_x), self.world_y - (move_y))
         for building in RUNTIME_STATE["building_group"]:
             if test_rect.colliderect(building.world_rect):
-                print(f"Collision!")
-                print("Enemy Topleft:", test_rect.topleft)
-                print("Enemy Bottomright:", test_rect.bottomright)
-                print("Building Topleft:", building.world_rect.topleft)
-                print("Building Bottomright:", building.world_rect.bottomright)
                 self.moving = False
                 if abs(self.vx) + abs(self.vy) < 5:
                     
@@ -755,7 +1062,6 @@ class Generic_Enemy(Individual_Sprite):
         for enemy in RUNTIME_STATE["enemy_group"]:
             if enemy != self:
                 if test_rect.colliderect(enemy.world_rect):
-                    print('collided with other enemy')
                     self.moving = False
                     if abs(self.vx) + abs(self.vy) < 5:
                     
@@ -768,7 +1074,6 @@ class Generic_Enemy(Individual_Sprite):
                     break
 
         if test_rect.colliderect(RUNTIME_STATE["player"].world_rect):
-            print(f"Collision with player!")
             if not RUNTIME_STATE["player"].intangible:
                 RUNTIME_STATE["player_hp"] -= 1
                 RUNTIME_STATE["speed_mult"] = RUNTIME_STATE["min_speed_mult"]
@@ -1087,11 +1392,6 @@ class Enemy_Bullet(Individual_Sprite):
         test_rect.topleft = (self.world_x - (move_x), self.world_y - (move_y))
         for building in RUNTIME_STATE["building_group"]:
             if test_rect.colliderect(building.world_rect):
-                print(f"Collision!")
-                print("Bullet Topleft:", test_rect.topleft)
-                print("Bullet Bottomright:", test_rect.bottomright)
-                print("Building Topleft:", building.world_rect.topleft)
-                print("Building Bottomright:", building.world_rect.bottomright)
                 RUNTIME_STATE["bullets"].remove(self)
                 self.enemy.bullet=None
                 kill_and_delete(self)
@@ -1099,17 +1399,11 @@ class Enemy_Bullet(Individual_Sprite):
         for enemy in RUNTIME_STATE["enemy_group"]:
             if enemy != self.enemy:
                 if test_rect.colliderect(enemy.world_rect):
-                    print(f"Collision!")
-                    print("Bullet Topleft:", test_rect.topleft)
-                    print("Bullet Bottomright:", test_rect.bottomright)
-                    print("Enemy Topleft:", enemy.world_rect.topleft)
-                    print("Enemy Bottomright:", enemy.world_rect.bottomright)
                     RUNTIME_STATE["bullets"].remove(self)
                     self.enemy.bullet=None
                     kill_and_delete(self)
                     break
         if test_rect.colliderect(RUNTIME_STATE["player"].world_rect):
-            print(f"Collision with player!")
             RUNTIME_STATE["player_hp"] -= 1
             RUNTIME_STATE["speed_mult"] -= .1
             self.enemy.bullet=None
@@ -1123,12 +1417,24 @@ class Enemy_Bullet(Individual_Sprite):
         )
 
 class Bullet(Individual_Sprite):
-    def __init__(self, top_left, bullet_dx, bullet_dy, speed):
-        super().__init__(
-            image_key=f"Weapons_Bullet.png",
-            subsurface_rect=None,
-            start_pos=['tl', top_left]
-        )
+    def __init__(self, top_left, bullet_dx, bullet_dy, speed, bullet_type=None, enemy=None):
+        if bullet_type==None:
+            super().__init__(
+                image_key=f"Weapons_Bullet.png",
+                subsurface_rect=None,
+                start_pos=['tl', top_left]
+            )
+            self.bullet_type = None
+            self.enemy = None
+        else:
+            if bullet_type == 'Fish':
+                super().__init__(
+                    image_key=f"Weapons_FishBullet.png",
+                    subsurface_rect=None,
+                    start_pos=['tl', top_left]
+                )
+                self.bullet_type = 'Fish'
+                self.enemy=enemy
         self.bullet_dx = bullet_dx
         self.bullet_dy = bullet_dy
         self.speed = speed
@@ -1150,29 +1456,31 @@ class Bullet(Individual_Sprite):
 
         test_rect = self.world_rect.copy()
         test_rect.topleft = (self.world_x - (move_x), self.world_y - (move_y))
+        if self.bullet_type != None and test_rect.colliderect(RUNTIME_STATE["player"].world_rect):
+            if not RUNTIME_STATE["player"].intangible:
+                RUNTIME_STATE["player_hp"] -= 1
+                RUNTIME_STATE["speed_mult"] -= .1
+                RUNTIME_STATE["player"].intangible = True
+                RUNTIME_STATE["player"].intangible_start = pygame.time.get_ticks()
+            self.contact = True
+            self.contact_start = pygame.time.get_ticks()
+            play_collision_sound()
+        #Add logic for hitting player here
         for building in RUNTIME_STATE["building_group"]:
             if test_rect.colliderect(building.world_rect):
-                print(f"Collision!")
-                print("Bullet Topleft:", test_rect.topleft)
-                print("Bullet Bottomright:", test_rect.bottomright)
-                print("Building Topleft:", building.world_rect.topleft)
-                print("Building Bottomright:", building.world_rect.bottomright)
                 self.contact = True
                 self.contact_start = pygame.time.get_ticks()
                 play_building_collision_sound()
                 break
         for enemy in RUNTIME_STATE["enemy_group"]:
-            if test_rect.colliderect(enemy.world_rect):
-                print(f"Collision!")
-                print("Bullet Topleft:", test_rect.topleft)
-                print("Bullet Bottomright:", test_rect.bottomright)
-                print("Enemy Topleft:", building.world_rect.topleft)
-                print("Enemy Bottomright:", building.world_rect.bottomright)
-                enemy.take_damage()
-                self.contact = True
-                self.contact_start = pygame.time.get_ticks()
-                play_collision_sound()
-                break
+            if enemy != self.enemy and not (enemy.enemy_class == 'Fish' and enemy.state == 'Hole'):
+                if test_rect.colliderect(enemy.world_rect):
+                    if self.bullet_type == None:
+                        enemy.take_damage()
+                    self.contact = True
+                    self.contact_start = pygame.time.get_ticks()
+                    play_collision_sound()
+                    break
         self.world_x -= int(move_x)
         self.world_y -= int(move_y)
         self.world_rect.topleft = (
@@ -1231,22 +1539,24 @@ class Ducky_Sprite(Individual_Sprite):
         self.frame_changed = False
         self.previous_surf = self.surf
         self.collision_already_applied = False
+        self.dstar = ''
+        self.previous_dstar = ''
         
 
     def character_moving_animation(self):
         if not self.bonk and not self.shooting:
-            if self.direction != self.previous_direction:
-                full_image = IMAGES_DICT[f"Ducky_{self.direction}.png"]
+            if self.direction != self.previous_direction or self.dstar != self.previous_dstar:
+                full_image = IMAGES_DICT[f"Ducky_{self.direction}{self.dstar}.png"]
                 self.surf = full_image
                 self.previous_direction = self.direction
                 self.frame_changed = True
             else:
                 self.frame_changed = False
         elif self.bonk and not self.shooting: #Shooting is always given priority over bonk
-            curr_bonk_frame = f"Ducky_Bonk_{self.direction}_{self.bonk_frame:02d}.png"
+            curr_bonk_frame = f"Ducky_Bonk_{self.direction}_{self.bonk_frame:02d}{self.previous_dstar}.png"
             current_time = pygame.time.get_ticks()
             new_frame = int((current_time - self.bonk_start)/100) + 1
-            new_bonk_frame = f"Ducky_Bonk_{self.direction}_{(new_frame):02d}.png"
+            new_bonk_frame = f"Ducky_Bonk_{self.direction}_{(new_frame):02d}{self.dstar}.png"
             if new_frame <= 6:
                 if new_bonk_frame != curr_bonk_frame:
                     full_image = IMAGES_DICT[new_bonk_frame]
@@ -1256,23 +1566,23 @@ class Ducky_Sprite(Individual_Sprite):
                 else:
                     self.frame_changed = False
             else:
-                full_image = IMAGES_DICT[f"Ducky_{self.direction}.png"]
+                full_image = IMAGES_DICT[f"Ducky_{self.direction}{self.dstar}.png"]
                 self.surf = full_image
                 self.previous_direction = self.direction
                 self.bonk = False
                 self.bonk_frame = 1
                 self.bonk_start = None
                 self.frame_changed = True
+                RUNTIME_STATE["current_bonk_pulse"] = 5
         elif self.shooting:
             #curr_shoot_frame = f"Ducky_DuckShooting_{self.direction}_{self.bonk_frame:02d}.png" #This will be correct when all directions work
-            curr_shoot_frame = f"Ducky_DuckShooting_{self.direction}_{self.shoot_frame:02d}.png"
+            curr_shoot_frame = f"Ducky_DuckShooting_{self.direction}_{self.shoot_frame:02d}{self.previous_dstar}.png"
             current_time = pygame.time.get_ticks()
             new_frame = int((current_time - self.shoot_start)/80) + 1
-            new_shoot_frame = f"Ducky_DuckShooting_{self.direction}_{(new_frame):02d}.png"
+            new_shoot_frame = f"Ducky_DuckShooting_{self.direction}_{(new_frame):02d}{self.dstar}.png"
             if new_frame <= 6:
                 if new_shoot_frame != curr_shoot_frame:
                     if new_frame == 2:
-                        print()
                         rad = math.radians(self.angle)
                         dx = math.cos(rad)
                         dy = -math.sin(rad)
@@ -1282,7 +1592,8 @@ class Ducky_Sprite(Individual_Sprite):
 
 
                         #make the speed static 500 for now
-                        speed=350 * RUNTIME_STATE["speed_mult"]
+                        bullet_speed_mult = max(int(math.hypot(RUNTIME_STATE["player"].vx, RUNTIME_STATE["player"].vy))/200, 1)
+                        speed=350 * bullet_speed_mult
                         new_bullet = Bullet(
                             top_left=(bullet_x / scale_factor, bullet_y / scale_factor),
                             bullet_dx=dx,
@@ -1300,7 +1611,7 @@ class Ducky_Sprite(Individual_Sprite):
                 else:
                     self.frame_changed = False
             else:
-                full_image = IMAGES_DICT[f"Ducky_{self.direction}.png"]
+                full_image = IMAGES_DICT[f"Ducky_{self.direction}{self.dstar}.png"]
                 self.surf = full_image
                 self.previous_direction = self.direction
                 self.shooting = False
@@ -1316,19 +1627,17 @@ class Ducky_Sprite(Individual_Sprite):
             if new_frame <= 60:
                 if new_frame != current_frame:
                     if new_frame % 2 == 0:
-                        print("even")
                         self.previous_surf = self.surf
                         intangible_image = "Ducky_Intangible.png"
                         full_image = IMAGES_DICT[intangible_image]
                         self.surf = full_image
                         self.intangible_frame = new_frame
                     else:
-                        print("odd")
                         self.intangible_frame = new_frame
                         self.surf = self.previous_surf
                         self.previous_surf = self.surf
             else:
-                full_image = IMAGES_DICT[f"Ducky_{self.direction}.png"]
+                full_image = IMAGES_DICT[f"Ducky_{self.direction}{self.dstar}.png"]
                 self.surf = full_image
                 self.previous_direction = self.direction
                 self.intangible = False
@@ -1342,9 +1651,23 @@ class Ducky_Sprite(Individual_Sprite):
 
         
     def character_stop_moving(self):
-        full_image = IMAGES_DICT[f"Ducky_{self.direction}.png"]
+        full_image = IMAGES_DICT[f"Ducky_{self.direction}{self.dstar}.png"]
         self.surf = full_image
 
+    
+    def check_dstar(self):
+        speed = int(math.hypot(self.vx, self.vy))
+        speed_adjusted = int(speed/2.78)
+        snapped_speed = int(speed_adjusted // 45) * 45
+        if snapped_speed >= 135 and not self.intangible:
+        #if snapped_speed >= 135:
+            self.previous_dstar = self.dstar
+            self.dstar = '_DSTAR'
+        else:
+            self.previous_dstar = self.dstar
+            self.dstar = ''
+        #print(snapped_speed)
+        #print(self.dstar)
 
     def check_move(self):
         self.collision_already_applied = False
@@ -1383,7 +1706,6 @@ class Ducky_Sprite(Individual_Sprite):
         
         if keys["back"] and not self.bonk: #Do not allow braking while bonking
             speed_bonus = RUNTIME_STATE["speed_mult"] - 1
-            print(speed_bonus)
             if speed_bonus >= 1.0:
                 brake_mult = 0.999995
             elif speed_bonus >= 0.8:
@@ -1395,10 +1717,8 @@ class Ducky_Sprite(Individual_Sprite):
             elif speed_bonus >= 0.2:
                 brake_mult = 0.95
             elif speed_bonus >= 0:
-                print('nope here')
                 brake_mult = 0.85
             else:
-                print('check here check here')
                 brake_mult = 0.85
             self.vx *= brake_mult
             self.vy *= brake_mult
@@ -1480,6 +1800,7 @@ class Ducky_Sprite(Individual_Sprite):
 
         test_rect = self.world_rect.copy()
         test_rect.topleft = (self.world_x - (move_x), self.world_y - (move_y))
+        self.check_dstar()
         #Old logic
         #New logic
         collided=False
@@ -1487,7 +1808,7 @@ class Ducky_Sprite(Individual_Sprite):
             #Need to add logic to bounce the enemy back too?
             if test_rect.colliderect(enemy.world_rect):
                 coll_speed = math.hypot(self.vx, self.vy)
-                if coll_speed == 0:
+                if coll_speed <= 0:
                     break
                 enemy.move(self.vx, self.vy, speed=1, dt=dt)
 
@@ -1522,8 +1843,10 @@ class Ducky_Sprite(Individual_Sprite):
                 # Reflect ONLY if moving into surface
                 dot = vx_n * nx + vy_n * ny
                 if dot < 0:
-                    vx_n -= 5 * dot * nx
-                    vy_n -= 5 * dot * ny
+                    if RUNTIME_STATE["current_bonk_pulse"] < 0:
+                        RUNTIME_STATE["current_bonk_pulse"] = 0
+                    vx_n -= RUNTIME_STATE["current_bonk_pulse"] * dot * nx
+                    vy_n -= RUNTIME_STATE["current_bonk_pulse"] * dot * ny
 
                     self.vx = vx_n * coll_speed
                     self.vy = vy_n * coll_speed
@@ -1540,7 +1863,11 @@ class Ducky_Sprite(Individual_Sprite):
                     self.bonk_start = pygame.time.get_ticks()
                 
                 collided=True
-                if not self.intangible:
+                if self.dstar != '':
+                    print('DSTAR COLLISION')
+                    RUNTIME_STATE["player_hp"] += 1
+                    enemy.take_damage()
+                elif not self.intangible:
                     RUNTIME_STATE["player_hp"] -= 1
                     RUNTIME_STATE["speed_mult"] = RUNTIME_STATE["min_speed_mult"]
                     self.intangible = True
@@ -1550,7 +1877,7 @@ class Ducky_Sprite(Individual_Sprite):
         for building in RUNTIME_STATE["building_group"]:
             if test_rect.colliderect(building.world_rect):
                 coll_speed = math.hypot(self.vx, self.vy)
-                if coll_speed == 0:
+                if coll_speed <= 0:
                     break
 
                 # Normalize velocity
@@ -1584,8 +1911,10 @@ class Ducky_Sprite(Individual_Sprite):
                 # Reflect ONLY if moving into surface
                 dot = vx_n * nx + vy_n * ny
                 if dot < 0:
-                    vx_n -= 5 * dot * nx
-                    vy_n -= 5 * dot * ny
+                    if RUNTIME_STATE["current_bonk_pulse"] < 2:
+                        RUNTIME_STATE["current_bonk_pulse"] = 2
+                    vx_n -= RUNTIME_STATE["current_bonk_pulse"] * dot * nx
+                    vy_n -= RUNTIME_STATE["current_bonk_pulse"] * dot * ny
 
                     self.vx = vx_n * coll_speed
                     self.vy = vy_n * coll_speed
@@ -1624,6 +1953,7 @@ class Ducky_Sprite(Individual_Sprite):
             self.collision_already_applied = True
             error_selection_sound()
             RUNTIME_STATE["speed_mult"] -= .01
+            RUNTIME_STATE["current_bonk_pulse"] -= 1
 
             
 
@@ -1644,6 +1974,66 @@ class Camera:
     
 
 #---------SPRITE GROUPS
+class Speedometer_Group(pygame.sprite.Group):
+    def __init__(self):
+        super().__init__()
+        self.body = SpeedMeter()
+        self.needle = SpeedNeedle()
+        self.add(self.body)
+        self.add(self.needle)
+        self.speed_degree = 0
+        self.curr_text = Regular_Font_Line(input_string='000', text_type='immediate', special_top_left=False, ducky_mph=True)
+        self.add(self.curr_text)
+
+    def animate_speed(self):
+        speed = int(math.hypot(RUNTIME_STATE["player"].vx, RUNTIME_STATE["player"].vy))
+        speed_adjusted = int(speed/2.78)
+        snapped_speed = int(speed_adjusted // 45) * 45
+        if snapped_speed > 180:
+            snapped_speed = 180
+        if snapped_speed != self.speed_degree:
+            frame_key = f"UI_SpeadMeterNeddles_{str(snapped_speed)}.png"
+            self.needle.surf = IMAGES_DICT[frame_key]
+            self.speed_degree = snapped_speed
+        mph = speed * 450 / 5280
+        if mph > 100:
+            mph = 99.9
+        
+        self.change_curr_text(f"{mph:04.1f}")
+
+    def change_curr_text(self, input_string):
+        for s in self.curr_text:
+            s.kill()
+            del s
+        self.curr_text = Regular_Font_Line(input_string=input_string, text_type='immediate', special_top_left=False, ducky_mph=True)
+        self.add(self.curr_text)
+        for sprite in self.curr_text:
+            RUNTIME_STATE["ui_sprites"].add(sprite, layer=6)
+
+
+class OtherUI_Group(pygame.sprite.Group):
+    def __init__(self):
+        super().__init__()
+        self.option_box = Overworld_Wide_Option_Box(top_left=(432,0))
+        self.add(self.option_box)
+        enemies_left = int(len(RUNTIME_STATE["enemy_group"]))
+        input_string = f"SPEED MULT: {RUNTIME_STATE["speed_mult"]:.2f} ENEMIES LEFT: {enemies_left:02d}"
+        self.curr_text = Regular_Font_Line(input_string=input_string, text_type='immediate', special_top_left=False, ducky_mph=True)
+        self.add(self.curr_text)
+
+    def change_curr_text(self):
+        for s in self.curr_text:
+            s.kill()
+            del s
+        enemies_left = int(len(RUNTIME_STATE["enemy_group"]))
+        input_string = f"SPEED MULT: {RUNTIME_STATE["speed_mult"]:.2f} ENEMIES LEFT: {enemies_left:02d}"
+        self.curr_text = Regular_Font_Line(input_string=input_string, text_type='immediate', special_top_left=False, ducky_mph=False, special_top_box=True)
+        self.add(self.curr_text)
+        for sprite in self.curr_text:
+            RUNTIME_STATE["ui_sprites"].add(sprite, layer=6)
+
+
+
 class Tileset_Group(pygame.sprite.Group):
     def __init__(self, tile_map):
         super().__init__()
@@ -1735,7 +2125,7 @@ class Overworld_Menu(pygame.sprite.Group):
             self.number_of_option_boxes = 0
         self.special_top_left = special_top_left
         if self.special_top_left:
-            self.main_text_box = Overworld_Main_Text_box(top_left=(0,0))
+            self.main_text_box = Overworld_Main_Text_box(top_left=(0,40))
         else:
             self.main_text_box = Overworld_Main_Text_box(top_left=(0, SCREEN_HEIGHT-43))
         self.curr_text = Regular_Font_Line(input_string=input_string, text_type=text_type, special_top_left=self.special_top_left)
@@ -1891,13 +2281,16 @@ class Overworld_Option_Box(pygame.sprite.Group):
             change_selection_sound()
 
 class Regular_Font_Line(pygame.sprite.Group):
-    def __init__(self, input_string, text_type, special_top_left=False):
+    def __init__(self, input_string, text_type, special_top_left=False, ducky_mph=False, special_top_box=False):
         super(Regular_Font_Line, self).__init__()
         self.text_type = text_type
         self.special_top_left = special_top_left
+        self.ducky_mph = ducky_mph
+        self.special_top_box = special_top_box
         self.set_letters(input_string, self.text_type)
         self.reveal_speed = 20  # ms per letter (~25 letters/sec)
         self.last_reveal_time = pygame.time.get_ticks()
+        
         
 
     def update(self):
@@ -1965,10 +2358,14 @@ class Regular_Font_Line(pygame.sprite.Group):
         return char_list
 
     def set_letters(self, input_string, text_type):
-        if len(input_string) > 108: #Need to adjust for new resolution(s)
-            split_index = input_string.rfind(' ', 0, 108)
+        if self.special_top_box:
+            input_string_split_at = 21
+        else:
+            input_string_split_at = 108
+        if len(input_string) > input_string_split_at: #Need to adjust for new resolution(s)
+            split_index = input_string.rfind(' ', 0, input_string_split_at)
             if split_index == -1:
-                split_index = 108  # no space found, hard split
+                split_index = input_string_split_at  # no space found, hard split
             input_string_top = input_string[:split_index].strip()
             input_string_bottom = input_string[split_index:].strip()
             self.expected_length = len(input_string_top) + len(input_string_bottom)
@@ -1991,12 +2388,21 @@ class Regular_Font_Line(pygame.sprite.Group):
         self.all_letters_set = False
         # Starting positions NEED ADJUSTED
         if self.special_top_left:
+            starting_height_top = 47
+            starting_height_bottom = 63
+            starting_width = 15
+        elif self.ducky_mph:
+            starting_height_top = 288
+            starting_height_bottom = 400
+            starting_width = 546
+        elif self.special_top_box:
             starting_height_top = 7
             starting_height_bottom = 23
+            starting_width = 436
         else:
             starting_height_top = SCREEN_HEIGHT - 36
             starting_height_bottom = SCREEN_HEIGHT - 20
-        starting_width = 15 #if text_type == 'immediate' else 24
+            starting_width = 15 #if text_type == 'immediate' else 24
 
         self.char_list = self.create_text_label(input_string_top, starting_width, starting_height_top)
 
@@ -2128,8 +2534,6 @@ def get_inputs():
                         RUNTIME_STATE["pressed_keys"]["joy_left"] = False
                         RUNTIME_STATE["pressed_keys"]["joy_right"] = False
                     if abs(axis_val) >= DEAD_ZONE:
-                        #print(event.axis)
-                        #print(event.value)
                         RUNTIME_STATE["pressed_keys"]["joy_left"] = axis_val < -DEAD_ZONE
                         RUNTIME_STATE["pressed_keys"]["joy_right"] = axis_val > DEAD_ZONE
 
@@ -2138,8 +2542,6 @@ def get_inputs():
                         RUNTIME_STATE["pressed_keys"]["joy_up"] = False
                         RUNTIME_STATE["pressed_keys"]["joy_down"] = False
                     if abs(axis_val) >= DEAD_ZONE:
-                        #print(event.axis)
-                        #print(event.value)
                         RUNTIME_STATE["pressed_keys"]["joy_up"] = axis_val < -DEAD_ZONE
                         RUNTIME_STATE["pressed_keys"]["joy_down"] = axis_val > DEAD_ZONE
 
@@ -2173,30 +2575,31 @@ def sign(x):
 def initialize_overworld():
     global RUNTIME_STATE
     if not RUNTIME_STATE["tileset_current"]:
-        #print('Initializing Overworld')
         for sprite in RUNTIME_STATE["tileset_group"]:
             RUNTIME_STATE["overworld_sprites"].add(sprite, layer=1)
         for sprite in RUNTIME_STATE["building_group"]:
             RUNTIME_STATE["overworld_sprites"].add(sprite, layer=2)
         for sprite in RUNTIME_STATE["enemy_group"]:
             RUNTIME_STATE["overworld_sprites"].add(sprite, layer=3)
-        #for sprite in RUNTIME_STATE["character_group"]:
-        #    RUNTIME_STATE["overworld_sprites"].add(sprite, layer=3)
         RUNTIME_STATE["camera"] = Camera()
         RUNTIME_STATE["player"] = Ducky_Sprite()
         RUNTIME_STATE["overworld_sprites"].add(RUNTIME_STATE["player"], layer=6)
 
         RUNTIME_STATE["main_bottom_textbox"] = None
 
-        #print('Overworld Initialized')
-        RUNTIME_STATE["TopStatusBar"] = Overworld_Menu(input_string=RUNTIME_STATE["top_display_string"], text_type='immediate', special_top_left=True)
-        #RUNTIME_STATE["TopStatusBar"].update_curr_text()
-        for sprite in RUNTIME_STATE["TopStatusBar"]:
-            RUNTIME_STATE["ui_sprites"].add(sprite, layer=6)
-        FADE_TIME = 1000  # milliseconds (1 second)
+        #RUNTIME_STATE["TopStatusBar"] = Overworld_Menu(input_string=RUNTIME_STATE["top_display_string"], text_type='immediate', special_top_left=True)
+        #for sprite in RUNTIME_STATE["TopStatusBar"]:
+        #    RUNTIME_STATE["ui_sprites"].add(sprite, layer=6)
+        FADE_TIME = 1000
         music_channel.fadeout(FADE_TIME)
         music_channel.play(battle_music_sound, loops=-1, fade_ms=FADE_TIME)
+        RUNTIME_STATE["speed_meter"] = Speedometer_Group()
+        for sprite in RUNTIME_STATE["speed_meter"]:
+            RUNTIME_STATE["ui_sprites"].add(sprite, layer=5)
         RUNTIME_STATE["tileset_current"] = True
+        RUNTIME_STATE["other_ui"] = OtherUI_Group()
+        for sprite in RUNTIME_STATE["other_ui"]:
+            RUNTIME_STATE["ui_sprites"].add(sprite, layer=5)
 
 def update_top_display():
     global RUNTIME_STATE
@@ -2293,6 +2696,37 @@ def parse_dialog_tsv(path):
     return [dialog_groups[i] for i in sorted(dialog_groups)]
 
 
+def ui_animations():
+    hearts = RUNTIME_STATE["hearts_list"]
+    dead_hearts = RUNTIME_STATE["dead_hearts_list"]
+    hp = RUNTIME_STATE["player_hp"]
+    if hp > len(hearts):
+        i = len(hearts)
+        heart_start = 16 + (20 * len(hearts))
+        while i < hp:
+            curr_heart = HP_Heart(top_left=(heart_start,16))
+            RUNTIME_STATE["hearts_list"].append(curr_heart)
+            RUNTIME_STATE["ui_sprites"].add(curr_heart, layer=5)
+            i = i + 1
+            heart_start += 20
+
+    for i in range(len(hearts) - 1, hp - 1, -1):
+        heart = hearts[i]
+        heart.start_dead_heart()
+
+        dead_hearts.append(heart)
+        hearts.pop(i)
+    for heart in hearts:
+        heart.animate_heart()
+    for heart in dead_hearts:
+        heart.animate_heart()
+    if RUNTIME_STATE["speed_meter"] != None:
+        RUNTIME_STATE["speed_meter"].animate_speed()
+    if RUNTIME_STATE["other_ui"] != None:
+        RUNTIME_STATE["other_ui"].change_curr_text()
+
+
+
 #---------GAME PHASES
 def titlescreen_phase():
     global RUNTIME_STATE
@@ -2304,6 +2738,18 @@ def titlescreen_phase():
         RUNTIME_STATE["title_screen"] = Diner_Screen()
         RUNTIME_STATE["ui_sprites"].add(RUNTIME_STATE["title_screen"], layer=1)
         RUNTIME_STATE["current_phase"] = diner_phase
+        RUNTIME_STATE["hearts_list"] = []
+        i = 0
+        heart_start = 16
+        while i < RUNTIME_STATE["player_hp"]:
+            curr_heart = HP_Heart(top_left=(heart_start,16))
+            RUNTIME_STATE["hearts_list"].append(curr_heart)
+            RUNTIME_STATE["ui_sprites"].add(curr_heart, layer=5)
+            RUNTIME_STATE["dead_hearts_list"] = []
+            i = i + 1
+            heart_start += 20
+
+        
 
 def overworld_phase():
     global RUNTIME_STATE
@@ -2375,6 +2821,12 @@ def transition_phase():
                     FADE_TIME = 1000
                     music_channel.fadeout(FADE_TIME)
                     music_channel.play(main_music_sound, loops=-1, fade_ms=FADE_TIME)
+                    for sprite in RUNTIME_STATE["speed_meter"]:
+                        kill_and_delete(sprite)
+                    RUNTIME_STATE["speed_meter"] = None
+                    for sprite in RUNTIME_STATE["other_ui"]:
+                        kill_and_delete(sprite)
+                    RUNTIME_STATE["other_ui"] = None
         elif RUNTIME_STATE["black_screen"].decrease_alpha:
             RUNTIME_STATE["black_screen"].fade_out()
         else:
@@ -2434,7 +2886,7 @@ def diner_phase():
             else:
                 RUNTIME_STATE["level"] += 1
                 RUNTIME_STATE["curr_dialog_tree"] = RUNTIME_STATE["main_dialog_tree"][RUNTIME_STATE["level"]]
-                change_level_selection()
+                
                 RUNTIME_STATE["current_phase"] = transition_back_to_stage_phase
 
 def transition_back_to_stage_phase():
@@ -2457,6 +2909,7 @@ def transition_back_to_stage_phase():
                 kill_menu_and_clear()
                 RUNTIME_STATE["DinerTalkBox"] = None
                 RUNTIME_STATE["curr_dialog_tree_level"] = 1
+                change_level_selection()
         elif RUNTIME_STATE["black_screen"].decrease_alpha:
             RUNTIME_STATE["black_screen"].fade_out()
         else:
@@ -2500,7 +2953,8 @@ RUNTIME_STATE = {
 "black_screen": None,
 "DinerTalkBox": None,
 "damage": 1,
-"min_speed_mult": 1.00
+"min_speed_mult": 1.00,
+"current_bonk_pulse": 5
 }
 
 #Set maps
@@ -2547,6 +3001,9 @@ RUNTIME_STATE["main_dialog_tree"] = dialog_tree
 RUNTIME_STATE["curr_dialog_tree"] = RUNTIME_STATE["main_dialog_tree"][0]
 RUNTIME_STATE["curr_dialog_tree_level"] = 1
 RUNTIME_STATE["curr_talking_head"] = None
+RUNTIME_STATE["TopStatusBar"] = None
+RUNTIME_STATE["speed_meter"] = None
+RUNTIME_STATE["other_ui"] = None
 
 
 
@@ -2599,11 +3056,20 @@ def play_damage_sound():
 def play_faint_sound():
     faint_channel.play(SFX_DICT["SFX_high damage_faint 02.wav"])
 
+def play_fish_shoot_sound():
+    gunshot_channel.play(SFX_DICT["SFX_FishShot.wav"])
+
 def play_shoot_sound():
     gunshot_channel.play(SFX_DICT["SFX_gunshot_replace.mp3"])
 
 def play_alert_sound():
     alert_channel.play(SFX_DICT["SFX_PigeonAlert.wav"])
+
+def play_fish_emerge_sound():
+    alert_channel.play(SFX_DICT["SFX_FishEmerge.wav"])
+
+def play_fish_dive_sound():
+    alert_channel.play(SFX_DICT["SFX_FishDive.wav"])
 
 def play_collision_sound():
     collision_channel.play(SFX_DICT["SFX_Collision.wav"])
@@ -2650,8 +3116,10 @@ def main():
         if not RUNTIME_STATE["end_overlay"]: #This is just for now, at a certain point we'll change this to be a phase
             if RUNTIME_STATE["speed_mult"] < RUNTIME_STATE["min_speed_mult"]:
                 RUNTIME_STATE["speed_mult"] = RUNTIME_STATE["min_speed_mult"]
-            if RUNTIME_STATE["tileset_current"]:
+            if RUNTIME_STATE["TopStatusBar"] and RUNTIME_STATE["tileset_current"]:
                 update_top_display()
+            if RUNTIME_STATE["current_phase"] != titlescreen_phase:
+                ui_animations()
 
         
         
@@ -2736,4 +3204,22 @@ main()
 
 
 
-
+#Everything missing in the first three levels besides sound, in order:
+#Title screen needs replaced
+#Cafe background needs replaced
+#Text box needs replaced
+#Dialog likely needs re-written
+#Level 1
+#Sleeping/sitting duck needs replaced, maybe with that sleeping Walrus thing?
+#Sleeping/sitting duck needs hit and/or death animation
+#Hit stop on bullet hitting enemy or player needs implemented
+#UI needs implemented
+#Ducky turning white needs implemented (may be able to do this with a python script), also programmed
+#Bonk 90 needs to be replaced with the actual bonk animation
+#Pause screen with options, just needs to be text in that nice game over font on a darkened transparent background
+#Game over screen needs a text image that is just text with the options Retry Level, Restart Game, or Exit Game to layer over the game over screen
+#Pause screen needs properly programmed
+#Ducky dying/game over needs properly programmed
+#Pigeons need hit animation
+#Pigeons need death animation
+#Level Clear screen needs replaced with a nice looking Level Clear message. Does not need to be full screen of artwork
