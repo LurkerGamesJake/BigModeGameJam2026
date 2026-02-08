@@ -10,7 +10,7 @@ from collections import Counter
 #import copy
 import time
 #import gc
-#import random
+import random
 import math
 #import asyncio
 import numpy as np
@@ -63,11 +63,13 @@ if abs((monitor_width / monitor_height) - target_ratio) < tolerance:
     SCREEN_HEIGHT = 360
     scale_factor = int(monitor_width / SCREEN_WIDTH)
     screen = pygame.display.set_mode([SCREEN_WIDTH * scale_factor, SCREEN_HEIGHT * scale_factor], pygame.FULLSCREEN | pygame.DOUBLEBUF)
-elif abs((monitor_width / monitor_height) - target_ratio_2) < tolerance:
-    SCREEN_WIDTH = 640
-    SCREEN_HEIGHT = 400
-    scale_factor = int(monitor_width / SCREEN_WIDTH)
-    screen = pygame.display.set_mode([SCREEN_WIDTH * scale_factor, SCREEN_HEIGHT * scale_factor], pygame.FULLSCREEN | pygame.DOUBLEBUF)
+
+#elif abs((monitor_width / monitor_height) - target_ratio_2) < tolerance:
+#    SCREEN_WIDTH = 640
+#    SCREEN_HEIGHT = 400
+#    scale_factor = int(monitor_width / SCREEN_WIDTH)
+#    screen = pygame.display.set_mode([SCREEN_WIDTH * scale_factor, SCREEN_HEIGHT * scale_factor], pygame.FULLSCREEN | pygame.DOUBLEBUF)
+
 #force_windowed = True
 #if force_windowed:
 else:
@@ -224,6 +226,18 @@ class Individual_Sprite(pygame.sprite.Sprite):
             if curr_alpha >= 122:
                 self.increase_alpha = False
 
+    def fade_in_full(self):
+        if self.increase_alpha:
+            if TARGET_FPS == 60:
+                amount_to_change = 5
+            else:
+                amount_to_change = 1
+            curr_alpha = self.surf.get_alpha()
+            curr_alpha += amount_to_change
+            self.surf.set_alpha(curr_alpha)
+            if curr_alpha >= 255:
+                self.increase_alpha = False
+
     def fade_out(self):
         if self.decrease_alpha:
             if TARGET_FPS == 60:
@@ -369,17 +383,61 @@ class Level_Clear_Continue_Screen(Individual_Sprite):
 class Game_Over_Screen(Individual_Sprite):
     def __init__(self):
         super().__init__(
-            image_key=f"UI_game over screen.png",
+            image_key=f"UI_game over screen (textless).png",
             subsurface_rect=None,
             start_pos=['tl', (0,0)]
         )
+
+class Game_Over_Screen_Text(Individual_Sprite):
+    def __init__(self):
+        super().__init__(
+            image_key=f"UI_game over screen_text.png",
+            subsurface_rect=None,
+            start_pos=['tl', (0,0)]
+        )
+        self.surf = IMAGES_DICT["UI_game over screen_text.png"].copy()
+        self.increase_alpha = True
+        self.surf.set_alpha(0)
+
+class Retry_Level_Button(Individual_Sprite):
+    def __init__(self):
+        super().__init__(
+            image_key=f"UI_retry level button.png",
+            subsurface_rect=None,
+            start_pos=['tl', (365,36)]
+        )
+        self.surf = IMAGES_DICT["UI_retry level button.png"].copy()
+        self.increase_alpha = True
+        self.surf.set_alpha(0)
+
+class Restart_Game_Button(Individual_Sprite):
+    def __init__(self):
+        super().__init__(
+            image_key=f"UI_restart game button_dark.png",
+            subsurface_rect=None,
+            start_pos=['tl', (365,141)]
+        )
+        self.surf = IMAGES_DICT["UI_restart game button_dark.png"].copy()
+        self.increase_alpha = True
+        self.surf.set_alpha(0)
+
+class Exit_Game_Button(Individual_Sprite):
+    def __init__(self):
+        super().__init__(
+            image_key=f"UI_exit game button_dark.png",
+            subsurface_rect=None,
+            start_pos=['tl', (365,246)]
+        )
+        self.surf = IMAGES_DICT["UI_exit game button_dark.png"].copy()
+        self.increase_alpha = True
+        self.surf.set_alpha(0)
 
 class Talking_Head(Individual_Sprite):
     def __init__(self, character):
         super().__init__(
             image_key=f"TalkingHead_{character}.png",
             subsurface_rect=None,
-            start_pos=['tl', (400,100)]
+            start_pos=['tl', (240,0)]
         )
         self.character = character
 
@@ -403,6 +461,14 @@ class SpeedMeter(Individual_Sprite):
             image_key="UI_BodySpeedMeter.png",
             subsurface_rect=None,
             start_pos=['tl', (520,240)]
+        )
+
+class SpeedMeterFace(Individual_Sprite):
+    def __init__(self):
+        super().__init__(
+            image_key="UI_WoopWoop_1.png",
+            subsurface_rect=None,
+            start_pos=['tl', (526,230)]
         )
         
 class SpeedNeedle(Individual_Sprite):
@@ -545,6 +611,8 @@ class Generic_Enemy(Individual_Sprite):
             enemy_image = f"FishHole_01"
         elif enemy_class == 'Walrus':
             enemy_image = f"WalrusIdle_0_01"
+        elif enemy_class == 'DonP':
+            enemy_image = f"DonPShooting_90_01"
         elif enemy_class != 'Test':
             enemy_image = f"{enemy_class}_90"
         else:
@@ -556,8 +624,8 @@ class Generic_Enemy(Individual_Sprite):
         )
         self.df_pos = df_pos
         self.enemy_class = enemy_class
-        if enemy_class == 'Fish':
-            self.hp = 2
+        if enemy_class == 'DonP':
+            self.hp = 8
         else:
             self.hp = 2
         self.bullet = None
@@ -585,11 +653,15 @@ class Generic_Enemy(Individual_Sprite):
             self.state = 'Idle'
             self.state_frame = 1
             self.state_start_time = pygame.time.get_ticks()
+        elif self.enemy_class == 'DonP':
+            self.state = 'Idle'
+            self.state_frame = 1
+            self.state_start_time = pygame.time.get_ticks()
         else:
             self.state = None
 
-    def take_damage(self):
-        self.hp -= RUNTIME_STATE["damage"]
+    def take_damage(self, dstar_collision=1):
+        self.hp -= (RUNTIME_STATE["damage"] * dstar_collision)
         if self.hp <= 0:
             if self.enemy_class == 'Fish':
                 if self.state != 'RIP':
@@ -601,6 +673,7 @@ class Generic_Enemy(Individual_Sprite):
                     RUNTIME_STATE["speed_mult"] += .1
                     if self.alert:
                         kill_and_delete(self.alert)
+                    play_faint_sound()
             elif self.enemy_class == 'Walrus':
                 if self.state != 'RIP':
                     full_image = IMAGES_DICT[f"Enemies_WalrusRIP_0_01.png"]
@@ -609,6 +682,25 @@ class Generic_Enemy(Individual_Sprite):
                     self.state_frame = 1
                     self.state_start_time = pygame.time.get_ticks()
                     RUNTIME_STATE["speed_mult"] += .1
+                    play_faint_sound()
+            elif self.enemy_class == 'Pigeon':
+                if self.state != 'RIP':
+                    full_image = IMAGES_DICT[f"Enemies_PigeonRIP_01.png"]
+                    self.surf = full_image
+                    self.state = 'RIP'
+                    self.state_frame = 1
+                    self.state_start_time = pygame.time.get_ticks()
+                    RUNTIME_STATE["speed_mult"] += .1
+                    play_faint_sound()
+            elif self.enemy_class == 'DonP':
+                if self.state != 'RIP':
+                    full_image = IMAGES_DICT[f"Enemies_DonPigeonRIP_01.png"]
+                    self.surf = full_image
+                    self.state = 'RIP'
+                    self.state_frame = 1
+                    self.state_start_time = pygame.time.get_ticks()
+                    RUNTIME_STATE["speed_mult"] += .1
+                    play_faint_sound()
             else:
                 RUNTIME_STATE["speed_mult"] += .1
                 play_faint_sound()
@@ -628,6 +720,18 @@ class Generic_Enemy(Individual_Sprite):
                 self.state = 'Damage'
                 self.state_frame = 1
                 self.state_start_time = pygame.time.get_ticks()
+            elif self.enemy_class == 'Pigeon':
+                full_image = IMAGES_DICT[f"Enemies_PigeonDamage_{self.direction}_01.png"]
+                self.surf = full_image
+                self.state = 'Damage'
+                self.state_frame = 1
+                self.state_start_time = pygame.time.get_ticks()
+            elif self.enemy_class == 'DonP':
+                full_image = IMAGES_DICT[f"Enemies_DonPDamage_{self.direction}_01.png"]
+                self.surf = full_image
+                self.state = 'Damage'
+                self.state_frame = 1
+                self.state_start_time = pygame.time.get_ticks()
             play_damage_sound()
 
     def determine_action(self):
@@ -637,15 +741,14 @@ class Generic_Enemy(Individual_Sprite):
             self.fish_action()
         elif self.enemy_class == 'Walrus':
             self.walrus_action()
-        elif self.enemy_class == 'Sleepy':
-            return
+        elif self.enemy_class == 'DonP':
+            self.donp_action()
         else:
             self.fire_bullet()
         if self.alert:
             self.sync_alert()
 
     def walrus_action(self):
-        print('walrus action')
         if self.state == 'RIP':
             curr_hole_frame = f"Enemies_WalrusRIP_0_{self.state_frame:02d}.png"
             current_time = pygame.time.get_ticks()
@@ -657,12 +760,11 @@ class Generic_Enemy(Individual_Sprite):
                     self.surf = full_image
                     self.state_frame = new_frame
             else:
-                play_faint_sound()
                 kill_and_delete(self)
         elif self.state == 'Damage':
             curr_hole_frame = f"Enemies_WalrusDamage_0_{self.state_frame:02d}.png"
             current_time = pygame.time.get_ticks()
-            new_frame = min(int((current_time - self.state_start_time)/100) + 1, 7)
+            new_frame = min(int((current_time - self.state_start_time)/120) + 1, 7)
             new_hole_frame = f"Enemies_WalrusDamage_0_{new_frame:02d}.png"
             if new_frame <= 6:
                 if new_hole_frame != curr_hole_frame:
@@ -676,10 +778,9 @@ class Generic_Enemy(Individual_Sprite):
                 self.state_frame = 1
                 self.state_start_time = pygame.time.get_ticks()
         elif self.state == 'Idle':
-            print('walrus idle')
             curr_hole_frame = f"Enemies_WalrusIdle_0_{self.state_frame:02d}.png"
             current_time = pygame.time.get_ticks()
-            new_frame = min(int((current_time - self.state_start_time)/100) + 1, 7)
+            new_frame = min(int((current_time - self.state_start_time)/120) + 1, 7)
             new_hole_frame = f"Enemies_WalrusIdle_0_{new_frame:02d}.png"
             if new_frame <= 6:
                 if new_hole_frame != curr_hole_frame:
@@ -692,6 +793,177 @@ class Generic_Enemy(Individual_Sprite):
                 self.state_frame = 1
                 self.state_start_time = pygame.time.get_ticks()
 
+    def donp_action(self):
+        #Need to get direction first
+        self.determine_don_p_direction()
+        if self.state == 'RIP':
+            curr_hole_frame = f"Enemies_DonPigeonRIP_{self.state_frame:02d}.png"
+            current_time = pygame.time.get_ticks()
+            new_frame = min(int((current_time - self.state_start_time)/100) + 1, 19)
+            new_hole_frame = f"Enemies_DonPigeonRIP_{new_frame:02d}.png"
+            if new_frame <= 18:
+                if new_hole_frame != curr_hole_frame:
+                    full_image = IMAGES_DICT[new_hole_frame]
+                    self.surf = full_image
+                    self.state_frame = new_frame
+            else:
+                kill_and_delete(self)
+        elif self.state == 'Damage':
+            if self.direction == '180_noshoot':
+                self.direction = '180'
+                fix_shoot = 'Right'
+            elif self.direction == '0_noshoot':
+                self.direction = '0'
+                fix_shoot = 'Left'
+            else:
+                fix_shoot = 'dont'
+            curr_idle_frame = f"Enemies_DonPDamage_{self.direction}_{self.state_frame:02d}.png"
+            current_time = pygame.time.get_ticks()
+            new_frame = min(int((current_time - self.state_start_time)/150) + 1, 7)
+            new_idle_frame = f"Enemies_DonPDamage_{self.direction}_{new_frame:02d}.png"
+            if new_frame <= 6:
+                if new_idle_frame != curr_idle_frame:
+                    if new_frame == 2 or new_frame == 5:
+                        angle = math.degrees(
+                        math.atan2(
+                                -(RUNTIME_STATE["player"].world_y - self.world_y),
+                                RUNTIME_STATE["player"].world_x - self.world_x
+                             )
+                        ) % 360
+                        rad = math.radians(angle)
+                        dx = -math.cos(rad)
+                        dy = math.sin(rad)
+                        if fix_shoot == 'Right':
+                            print('fix shoot right')
+                            dx = -1
+                            dy = 0
+                        elif fix_shoot == 'Left':
+                            print('fix shoot left')
+                            dx = 1
+                            dy = 0
+
+                        BULLET_SPEED = 80
+                        if self.direction == '0':
+                            bullet_x = self.world_x - 4 * scale_factor
+                            bullet_y = self.world_y + 14 * scale_factor
+                        elif self.direction == '30':
+                            bullet_x = self.world_x
+                            bullet_y = self.world_y + 16 * scale_factor
+                        elif self.direction == '60':
+                            bullet_x = self.world_x + 12 * scale_factor
+                            bullet_y = self.world_y + 24 * scale_factor
+                        elif self.direction == '90':
+                            bullet_x = self.world_x + 8 * scale_factor
+                            bullet_y = self.world_y + 24 * scale_factor
+                        elif self.direction == '120':
+                            bullet_x = self.world_x + 10 * scale_factor
+                            bullet_y = self.world_y + 24 * scale_factor
+                        elif self.direction == '150':
+                            bullet_x = self.world_x + 20 * scale_factor
+                            bullet_y = self.world_y + 16 * scale_factor
+                        elif self.direction == '180':
+                            bullet_x = self.world_x + 24 * scale_factor
+                            bullet_y = self.world_y + 14 * scale_factor
+
+
+                        bullet = Bullet(
+                            top_left=(bullet_x/scale_factor, bullet_y/scale_factor),
+                            bullet_dx=dx,
+                            bullet_dy=dy,
+                            speed=BULLET_SPEED,
+                            bullet_type='DonP',
+                            enemy=self
+                        )
+
+                        RUNTIME_STATE["overworld_sprites"].add(bullet, layer=20)
+                        RUNTIME_STATE["bullets"].append(bullet)
+                        play_donp_shoot_sound()
+                    full_image = IMAGES_DICT[new_idle_frame]
+                    self.surf = full_image
+                    self.state_frame = new_frame
+            else: 
+                full_image = IMAGES_DICT[f"Enemies_DonPShooting_{self.direction}_01.png"]
+                self.surf = full_image
+                self.state_frame = 1
+                self.state = 'Idle'
+                self.state_start_time = pygame.time.get_ticks()
+        elif self.state == 'Idle':
+            if self.direction == '180_noshoot':
+                self.direction = '180'
+                fix_shoot = 'Right'
+            elif self.direction == '0_noshoot':
+                self.direction = '0'
+                fix_shoot = 'Left'
+            else:
+                fix_shoot = 'dont'
+            curr_idle_frame = f"Enemies_DonPShooting_{self.direction}_{self.state_frame:02d}.png"
+            current_time = pygame.time.get_ticks()
+            new_frame = min(int((current_time - self.state_start_time)/150) + 1, 7)
+            new_idle_frame = f"Enemies_DonPShooting_{self.direction}_{new_frame:02d}.png"
+            if new_frame <= 6:
+                if new_idle_frame != curr_idle_frame:
+                    if new_frame == 2 or new_frame == 5:
+                        angle = math.degrees(
+                        math.atan2(
+                                -(RUNTIME_STATE["player"].world_y - self.world_y),
+                                RUNTIME_STATE["player"].world_x - self.world_x
+                             )
+                        ) % 360
+                        rad = math.radians(angle)
+                        dx = -math.cos(rad)
+                        dy = math.sin(rad)
+                        if fix_shoot == 'Right':
+                            print('fix shoot right')
+                            dx = -1
+                            dy = 0
+                        elif fix_shoot == 'Left':
+                            print('fix shoot left')
+                            dx = 1
+                            dy = 0
+
+                        BULLET_SPEED = 80
+                        if self.direction == '0':
+                            bullet_x = self.world_x - 4 * scale_factor
+                            bullet_y = self.world_y + 14 * scale_factor
+                        elif self.direction == '30':
+                            bullet_x = self.world_x
+                            bullet_y = self.world_y + 16 * scale_factor
+                        elif self.direction == '60':
+                            bullet_x = self.world_x + 12 * scale_factor
+                            bullet_y = self.world_y + 24 * scale_factor
+                        elif self.direction == '90':
+                            bullet_x = self.world_x + 8 * scale_factor
+                            bullet_y = self.world_y + 24 * scale_factor
+                        elif self.direction == '120':
+                            bullet_x = self.world_x + 10 * scale_factor
+                            bullet_y = self.world_y + 24 * scale_factor
+                        elif self.direction == '150':
+                            bullet_x = self.world_x + 20 * scale_factor
+                            bullet_y = self.world_y + 16 * scale_factor
+                        elif self.direction == '180':
+                            bullet_x = self.world_x + 24 * scale_factor
+                            bullet_y = self.world_y + 14 * scale_factor
+
+                        bullet = Bullet(
+                            top_left=(bullet_x/scale_factor, bullet_y/scale_factor),
+                            bullet_dx=dx,
+                            bullet_dy=dy,
+                            speed=BULLET_SPEED,
+                            bullet_type='DonP',
+                            enemy=self
+                        )
+
+                        RUNTIME_STATE["overworld_sprites"].add(bullet, layer=20)
+                        RUNTIME_STATE["bullets"].append(bullet)
+                        play_donp_shoot_sound()
+                    full_image = IMAGES_DICT[new_idle_frame]
+                    self.surf = full_image
+                    self.state_frame = new_frame
+            else:
+                full_image = IMAGES_DICT[f"Enemies_DonPShooting_{self.direction}_01.png"]
+                self.surf = full_image
+                self.state_frame = 1
+                self.state_start_time = pygame.time.get_ticks()
 
     def fish_action(self):
         self.fish_check_player_distance()
@@ -708,7 +980,6 @@ class Generic_Enemy(Individual_Sprite):
                     self.surf = full_image
                     self.state_frame = new_frame
             else:
-                play_faint_sound()
                 kill_and_delete(self)
         elif self.state == 'Damage':
             curr_hole_frame = f"Enemies_FishDamage_180_{self.state_frame:02d}_{self.player_side}.png"
@@ -861,18 +1132,119 @@ class Generic_Enemy(Individual_Sprite):
             self.alert = None
             
 
-    def character_moving_animation(self):
+    def pigeon_moving_animation(self):
         #if not self.bonk:
-        if self.direction != self.previous_direction:
-            full_image = IMAGES_DICT[f"Enemies_{self.enemy_class}_{self.direction}.png"]
+        if self.state == 'RIP':
+            curr_hole_frame = f"Enemies_PigeonRIP_{self.state_frame:02d}.png"
+            current_time = pygame.time.get_ticks()
+            new_frame = min(int((current_time - self.state_start_time)/100) + 1, 13)
+            new_hole_frame = f"Enemies_PigeonRIP_{new_frame:02d}.png"
+            if new_frame <= 12:
+                if new_hole_frame != curr_hole_frame:
+                    full_image = IMAGES_DICT[new_hole_frame]
+                    self.surf = full_image
+                    self.state_frame = new_frame
+            else:
+                kill_and_delete(self)
+        elif self.state == 'Damage':
+            curr_hole_frame = f"Enemies_PigeonDamage_{self.direction}_{self.state_frame:02d}.png"
+            current_time = pygame.time.get_ticks()
+            new_frame = min(int((current_time - self.state_start_time)/100) + 1, 7)
+            new_hole_frame = f"Enemies_PigeonDamage_{self.direction}_{new_frame:02d}.png"
+            if new_frame <= 6:
+                if new_hole_frame != curr_hole_frame:
+                    full_image = IMAGES_DICT[new_hole_frame]
+                    self.surf = full_image
+                    self.state_frame = new_frame
+            else:
+                full_image = IMAGES_DICT[f"Enemies_Pigeon_{self.direction}.png"]
+                self.surf = full_image
+                self.state = 'Idle'
+                self.state_frame = 1
+                self.state_start_time = pygame.time.get_ticks()
+        elif self.direction != self.previous_direction:
+            full_image = IMAGES_DICT[f"Enemies_Pigeon_{self.direction}.png"]
             self.surf = full_image
             self.previous_direction = self.direction
+
+
+    def determine_don_p_direction(self):
+        global RUNTIME_STATE
+        if self.state == 'RIP':
+            #self.donp_action()
+            return
+        
+        dx = RUNTIME_STATE["player"].world_x - self.world_x
+        dy = RUNTIME_STATE["player"].world_y - self.world_y
+        self.active = True
+        if self.active:
+
+            dt = RUNTIME_STATE["delta_time"]
+            ROT_SPEED = 80
+            MAX_SPEED = 300
+            speed = math.hypot(self.vx, self.vy)
+            speed_ratio = min(speed / MAX_SPEED, 1)
+            effective_rot = ROT_SPEED * (1 - 0.6 * speed_ratio)
+
+
+            avoid_turn = 0
+            player = RUNTIME_STATE["player"]
+
+            dx = player.world_x - self.world_x
+            dy = player.world_y - self.world_y
+
+            target_angle = math.degrees(math.atan2(-dy, dx)) % 360
+
+            turn_error = angle_diff(target_angle, self.angle)
+
+
+            #Determine rather to run left or right
+            TURN_DEADZONE = 3 
+
+            turn_dir = 0
+
+            #Checking player
+            if turn_error > TURN_DEADZONE:
+                turn_dir -= 1
+            elif turn_error < -TURN_DEADZONE:
+                turn_dir += 1
+
+            #Checking obstacled
+            turn_dir += avoid_turn *  180  #Tuneable value
+
+            self.angle += turn_dir * effective_rot * dt
+
+            angle = self.angle % 360
+            if 0 <= angle < 15:
+                self.direction = '0'
+            elif 15 <= angle < 45:
+                self.direction = '30'
+            elif 45 <= angle < 75:
+                self.direction = '60'
+            elif 75 <= angle < 105:
+                self.direction = '90'
+            elif 105 <= angle < 135:
+                self.direction = '120'
+            elif 135 <= angle < 165:
+                self.direction = '150'
+            elif 165 <= angle < 195:
+                self.direction = '180'
+            elif 195 <= angle < 270:
+                self.direction = '180_noshoot'
+            elif 270 <= angle < 345:
+                self.direction = '0_noshoot'
+            else:
+                self.direction = '0'
 
 
     def follow_player(self):
         global RUNTIME_STATE
 
         if self.enemy_class != 'Pigeon':
+            return
+        
+        if self.state == 'RIP' or self.state == 'Damage':
+            self.pigeon_moving_animation()
             return
         
         dx = RUNTIME_STATE["player"].world_x - self.world_x
@@ -1012,86 +1384,6 @@ class Generic_Enemy(Individual_Sprite):
             else:
                 if self.active:
                     self.active = False
-
-
-    def old_move(self, dx, dy, speed, dt):
-        move_x = dx * speed * dt * 4
-        move_y = dy * speed * dt * 4
-        angle = self.angle % 360
-        if 0 <= angle < 15:
-            self.direction = '0'
-        elif 15 <= angle < 45:
-            self.direction = '30'
-        elif 45 <= angle < 75:
-            self.direction = '60'
-        elif 75 <= angle < 105:
-            self.direction = '90'
-        elif 105 <= angle < 135:
-            self.direction = '120'
-        elif 135 <= angle < 165:
-            self.direction = '150'
-        elif 165 <= angle < 195:
-            self.direction = '180'
-        elif 195 <= angle < 225:
-            self.direction = '210'
-        elif 225 <= angle < 255:
-            self.direction = '240'
-        elif 255 <= angle < 285:
-            self.direction = '270'
-        elif 285 <= angle < 315:
-            self.direction = '300'
-        elif 315 <= angle < 345:
-            self.direction = '330'
-        else:
-            self.direction = '0'
-
-        test_rect = self.world_rect.copy()
-        test_rect.topleft = (self.world_x - (move_x), self.world_y - (move_y))
-        for building in RUNTIME_STATE["building_group"]:
-            if test_rect.colliderect(building.world_rect):
-                self.moving = False
-                if abs(self.vx) + abs(self.vy) < 5:
-                    
-                    self.vx = sign(self.vx) * 7.5
-                    self.vy = sign(self.vy) * 7.5
-                else:
-                    self.vx *= -7.5
-                    self.vy *= -7.5
-                error_selection_sound()
-                break
-        for enemy in RUNTIME_STATE["enemy_group"]:
-            if enemy != self:
-                if test_rect.colliderect(enemy.world_rect):
-                    self.moving = False
-                    if abs(self.vx) + abs(self.vy) < 5:
-                    
-                        self.vx = sign(self.vx) * 7.5
-                        self.vy = sign(self.vy) * 7.5
-                    else:
-                        self.vx *= -7.5
-                        self.vy *= -7.5
-                    error_selection_sound()
-                    break
-
-        if test_rect.colliderect(RUNTIME_STATE["player"].world_rect):
-            if not RUNTIME_STATE["player"].intangible:
-                RUNTIME_STATE["player_hp"] -= 1
-                RUNTIME_STATE["speed_mult"] = RUNTIME_STATE["min_speed_mult"]
-                RUNTIME_STATE["player"].intangible = True
-                RUNTIME_STATE["player"].intangible_frame = 1
-                RUNTIME_STATE["player"].intangible_start = pygame.time.get_ticks()
-            self.vx *= -3.5
-            self.vy *= -3.5
-            #kill_and_delete(self)
-
-        self.character_moving_animation()
-        if self.moving:
-            self.world_x -= int(move_x)
-            self.world_y -= int(move_y)
-            self.world_rect.topleft = (
-                int(self.world_x),
-                int(self.world_y)
-            )
         
 
     def fire_bullet(self):
@@ -1339,7 +1631,7 @@ class Generic_Enemy(Individual_Sprite):
 
 
         
-        self.character_moving_animation()
+        self.pigeon_moving_animation()
         if not collided:
             if self.moving:
                 self.world_x -= int(move_x)
@@ -1362,7 +1654,7 @@ class Generic_Enemy(Individual_Sprite):
                 int(self.world_x),
                 int(self.world_y)
             )
-            error_selection_sound()
+            #error_selection_sound()
 
 
 
@@ -1405,10 +1697,11 @@ class Enemy_Bullet(Individual_Sprite):
                     break
         if test_rect.colliderect(RUNTIME_STATE["player"].world_rect):
             RUNTIME_STATE["player_hp"] -= 1
-            RUNTIME_STATE["speed_mult"] -= .1
+            RUNTIME_STATE["speed_mult"] -= .03
             self.enemy.bullet=None
             RUNTIME_STATE["bullets"].remove(self)
             kill_and_delete(self)
+            play_ducky_damage_sound()
         self.world_x -= int(move_x)
         self.world_y -= int(move_y)
         self.world_rect.topleft = (
@@ -1430,6 +1723,14 @@ class Bullet(Individual_Sprite):
             if bullet_type == 'Fish':
                 super().__init__(
                     image_key=f"Weapons_FishBullet.png",
+                    subsurface_rect=None,
+                    start_pos=['tl', top_left]
+                )
+                self.bullet_type = 'Fish'
+                self.enemy=enemy
+            if bullet_type == 'DonP':
+                super().__init__(
+                    image_key=f"Weapons_Bullet.png",
                     subsurface_rect=None,
                     start_pos=['tl', top_left]
                 )
@@ -1459,12 +1760,13 @@ class Bullet(Individual_Sprite):
         if self.bullet_type != None and test_rect.colliderect(RUNTIME_STATE["player"].world_rect):
             if not RUNTIME_STATE["player"].intangible:
                 RUNTIME_STATE["player_hp"] -= 1
-                RUNTIME_STATE["speed_mult"] -= .1
+                RUNTIME_STATE["speed_mult"] -= .03
                 RUNTIME_STATE["player"].intangible = True
                 RUNTIME_STATE["player"].intangible_start = pygame.time.get_ticks()
+                play_ducky_damage_sound()
             self.contact = True
             self.contact_start = pygame.time.get_ticks()
-            play_collision_sound()
+            #play_collision_sound()
         #Add logic for hitting player here
         for building in RUNTIME_STATE["building_group"]:
             if test_rect.colliderect(building.world_rect):
@@ -1479,7 +1781,7 @@ class Bullet(Individual_Sprite):
                         enemy.take_damage()
                     self.contact = True
                     self.contact_start = pygame.time.get_ticks()
-                    play_collision_sound()
+                    #play_collision_sound()
                     break
         self.world_x -= int(move_x)
         self.world_y -= int(move_y)
@@ -1541,10 +1843,30 @@ class Ducky_Sprite(Individual_Sprite):
         self.collision_already_applied = False
         self.dstar = ''
         self.previous_dstar = ''
+        self.rip = False
+        self.rip_frame = 1
+        self.rip_start = None
+        self.rip_and_dead = False
+        self.enemies_collided_with = []
         
 
     def character_moving_animation(self):
-        if not self.bonk and not self.shooting:
+        if self.rip:
+            curr_rip_frame = f"Ducky_DuckyRIP_{self.rip_frame:02d}.png"
+            current_time = pygame.time.get_ticks()
+            new_frame = int((current_time - self.rip_start)/150) + 1
+            new_rip_frame = f"Ducky_DuckyRIP_{(new_frame):02d}.png"
+            if new_frame <= 15:
+                if new_rip_frame != curr_rip_frame:
+                    full_image = IMAGES_DICT[new_rip_frame]
+                    self.surf = full_image
+                    self.bonk_frame = new_frame
+                    self.frame_changed = True
+                else:
+                    self.frame_changed = False
+            else:
+                self.rip_and_dead = True
+        elif not self.bonk and not self.shooting:
             if self.direction != self.previous_direction or self.dstar != self.previous_dstar:
                 full_image = IMAGES_DICT[f"Ducky_{self.direction}{self.dstar}.png"]
                 self.surf = full_image
@@ -1620,7 +1942,7 @@ class Ducky_Sprite(Individual_Sprite):
                 self.frame_changed = True
         if self.frame_changed == True:
             self.previous_surf = self.surf
-        if self.intangible:
+        if self.intangible and not self.rip:
             current_frame = self.intangible_frame
             current_time = pygame.time.get_ticks()
             new_frame = int((current_time - self.intangible_start)/50) + 1
@@ -1657,7 +1979,7 @@ class Ducky_Sprite(Individual_Sprite):
     
     def check_dstar(self):
         speed = int(math.hypot(self.vx, self.vy))
-        speed_adjusted = int(speed/2.78)
+        speed_adjusted = int(speed/2.15)
         snapped_speed = int(speed_adjusted // 45) * 45
         if snapped_speed >= 135 and not self.intangible:
         #if snapped_speed >= 135:
@@ -1804,11 +2126,22 @@ class Ducky_Sprite(Individual_Sprite):
         #Old logic
         #New logic
         collided=False
+        just_dstared_enemy = False
         for enemy in RUNTIME_STATE["enemy_group"]:
             #Need to add logic to bounce the enemy back too?
             if test_rect.colliderect(enemy.world_rect):
                 coll_speed = math.hypot(self.vx, self.vy)
                 if coll_speed <= 0:
+                    break
+                if self.dstar != '':
+                    if enemy not in self.enemies_collided_with:
+                        print('DSTAR COLLISION')
+                        RUNTIME_STATE["player_hp"] += 1
+                        enemy.take_damage(dstar_collision=2)
+                        self.enemies_collided_with.append(enemy)
+                    just_dstared_enemy = True
+                    break
+                if enemy.state == 'RIP':
                     break
                 enemy.move(self.vx, self.vy, speed=1, dt=dt)
 
@@ -1863,16 +2196,19 @@ class Ducky_Sprite(Individual_Sprite):
                     self.bonk_start = pygame.time.get_ticks()
                 
                 collided=True
+                '''
                 if self.dstar != '':
                     print('DSTAR COLLISION')
                     RUNTIME_STATE["player_hp"] += 1
                     enemy.take_damage()
-                elif not self.intangible:
+                '''
+                if not self.intangible:
                     RUNTIME_STATE["player_hp"] -= 1
-                    RUNTIME_STATE["speed_mult"] = RUNTIME_STATE["min_speed_mult"]
+                    RUNTIME_STATE["speed_mult"] -= .03
                     self.intangible = True
                     self.intangible_frame = 1
                     self.intangible_start = pygame.time.get_ticks()
+                    play_ducky_damage_sound()
                 
         for building in RUNTIME_STATE["building_group"]:
             if test_rect.colliderect(building.world_rect):
@@ -1945,6 +2281,8 @@ class Ducky_Sprite(Individual_Sprite):
                     int(self.world_x),
                     int(self.world_y)
                 )
+                if not just_dstared_enemy:
+                    self.enemies_collided_with = []
         else:
             self.world_rect.topleft = (
                 int(self.world_x),
@@ -1979,15 +2317,20 @@ class Speedometer_Group(pygame.sprite.Group):
         super().__init__()
         self.body = SpeedMeter()
         self.needle = SpeedNeedle()
+        self.face = SpeedMeterFace()
         self.add(self.body)
         self.add(self.needle)
+        self.add(self.face)
         self.speed_degree = 0
         self.curr_text = Regular_Font_Line(input_string='000', text_type='immediate', special_top_left=False, ducky_mph=True)
         self.add(self.curr_text)
+        self.state = self.get_face_state()
+        self.state_frame = 1
+        self.state_start_time = pygame.time.get_ticks()
 
     def animate_speed(self):
         speed = int(math.hypot(RUNTIME_STATE["player"].vx, RUNTIME_STATE["player"].vy))
-        speed_adjusted = int(speed/2.78)
+        speed_adjusted = int(speed/2.15)
         snapped_speed = int(speed_adjusted // 45) * 45
         if snapped_speed > 180:
             snapped_speed = 180
@@ -2000,6 +2343,95 @@ class Speedometer_Group(pygame.sprite.Group):
             mph = 99.9
         
         self.change_curr_text(f"{mph:04.1f}")
+        self.animate_face()
+
+    def get_face_state(self):
+        speed = int(math.hypot(RUNTIME_STATE["player"].vx, RUNTIME_STATE["player"].vy))
+        speed_adjusted = int(speed/2.15)
+        snapped_speed = int(speed_adjusted // 45) * 45
+        if snapped_speed >= 135:
+            self.state = 'Flames'
+            return
+        if RUNTIME_STATE["player"].intangible:
+            self.state = 'Sadface'
+            return
+        for enemy in RUNTIME_STATE["enemy_group"]:
+            if enemy.state == 'RIP':
+                self.state = 'Glasses'
+                return
+        self.state = 'WoopWoop'
+
+
+    def animate_face(self):
+        self.get_face_state()
+        if self.state == 'Flames':
+            curr_hole_frame = f"UI_Flames_{self.state_frame:01d}.png"
+            current_time = pygame.time.get_ticks()
+            new_frame = min(int((current_time - self.state_start_time)/150) + 1, 5)
+            new_hole_frame = f"UI_Flames_{new_frame:01d}.png"
+            if new_frame <= 4:
+                if new_hole_frame != curr_hole_frame:
+                    full_image = IMAGES_DICT[new_hole_frame]
+                    self.face.surf = full_image
+                    self.state_frame = new_frame
+            else:
+                full_image = IMAGES_DICT[f"UI_Flames_1.png"]
+                self.face.surf = full_image
+                self.state = 'Flames'
+                self.state_frame = 1
+                self.state_start_time = pygame.time.get_ticks()
+        elif self.state == 'Glasses':
+            curr_hole_frame = f"UI_Glasses_{self.state_frame:01d}.png"
+            current_time = pygame.time.get_ticks()
+            new_frame = min(int((current_time - self.state_start_time)/200) + 1, 4)
+            new_hole_frame = f"UI_Glasses_{new_frame:01d}.png"
+            if new_frame <= 3:
+                if new_hole_frame != curr_hole_frame:
+                    full_image = IMAGES_DICT[new_hole_frame]
+                    self.face.surf = full_image
+                    self.state_frame = new_frame
+            else:
+                full_image = IMAGES_DICT[f"UI_Glasses_1.png"]
+                self.face.surf = full_image
+                self.state = 'Glasses'
+                self.state_frame = 1
+                self.state_start_time = pygame.time.get_ticks()
+        elif self.state == 'Sadface':
+            curr_hole_frame = f"UI_Sadface_{self.state_frame:01d}.png"
+            current_time = pygame.time.get_ticks()
+            new_frame = min(int((current_time - self.state_start_time)/250) + 1, 3)
+            new_hole_frame = f"UI_Sadface_{new_frame:01d}.png"
+            if new_frame <= 2:
+                if new_hole_frame != curr_hole_frame:
+                    full_image = IMAGES_DICT[new_hole_frame]
+                    self.face.surf = full_image
+                    self.state_frame = new_frame
+            else:
+                full_image = IMAGES_DICT[f"UI_Sadface_1.png"]
+                self.face.surf = full_image
+                self.state = 'Sadface'
+                self.state_frame = 1
+                self.state_start_time = pygame.time.get_ticks()
+        elif self.state == 'WoopWoop':
+            curr_hole_frame = f"UI_WoopWoop_{self.state_frame:01d}.png"
+            current_time = pygame.time.get_ticks()
+            new_frame = min(int((current_time - self.state_start_time)/200) + 1, 4)
+            new_hole_frame = f"UI_WoopWoop_{new_frame:01d}.png"
+            if new_frame <= 3:
+                if new_hole_frame != curr_hole_frame:
+                    full_image = IMAGES_DICT[new_hole_frame]
+                    self.face.surf = full_image
+                    self.state_frame = new_frame
+            else:
+                full_image = IMAGES_DICT[f"UI_WoopWoop_1.png"]
+                self.face.surf = full_image
+                self.state = 'WoopWoop'
+                self.state_frame = 1
+                self.state_start_time = pygame.time.get_ticks()
+        
+        
+
+
 
     def change_curr_text(self, input_string):
         for s in self.curr_text:
@@ -2041,7 +2473,8 @@ class Tileset_Group(pygame.sprite.Group):
         self.tile_map = tile_map
 
         tile_size = 16
-        start_x, start_y = -96, -80
+        #start_x, start_y = -96, -80
+        start_x, start_y = -96, -112
         indexes_to_change = []
         for row_index, (_, row) in enumerate(tile_map.iterrows()):
             y = start_y + row_index * tile_size
@@ -2060,7 +2493,7 @@ class Tileset_Group(pygame.sprite.Group):
                 self.add(curr_tile)
         self.moving = False
         for index in indexes_to_change:
-            self.tile_map.iat[index[0], index[1]] = 3
+            self.tile_map.iat[index[0], index[1]] = '3'
 
 
 class Building_Group(pygame.sprite.Group):
@@ -2070,13 +2503,17 @@ class Building_Group(pygame.sprite.Group):
         self.tile_map = tile_map
 
         tile_size = 16
-        start_x, start_y = -96, -80
+        #start_x, start_y = -96, -80
+        start_x, start_y = -96, -112
 
         for row_index, (_, row) in enumerate(tile_map.iterrows()):
             y = start_y + row_index * tile_size
             for col_index, column in enumerate(row):
                 if str(column) != "0" and str(column) != "Exit":
-                    x = start_x + col_index * tile_size
+                    if str(column) == 'TrainSeatsRight':
+                        x = x = start_x + 12 + col_index * tile_size
+                    else:
+                        x = start_x + col_index * tile_size
                     curr_building = Generic_Building(
                         (x, y),
                         column,
@@ -2094,7 +2531,8 @@ class Enemy_Group(pygame.sprite.Group):
         self.tile_map = tile_map
 
         tile_size = 16
-        start_x, start_y = -96, -80
+        #start_x, start_y = -96, -80
+        start_x, start_y = -96, -112
 
         for row_index, (_, row) in enumerate(tile_map.iterrows()):
             y = start_y + row_index * tile_size
@@ -2398,7 +2836,7 @@ class Regular_Font_Line(pygame.sprite.Group):
         elif self.special_top_box:
             starting_height_top = 7
             starting_height_bottom = 23
-            starting_width = 436
+            starting_width = 440
         else:
             starting_height_top = SCREEN_HEIGHT - 36
             starting_height_bottom = SCREEN_HEIGHT - 20
@@ -2574,6 +3012,7 @@ def sign(x):
 
 def initialize_overworld():
     global RUNTIME_STATE
+    global CURRENT_MUSIC
     if not RUNTIME_STATE["tileset_current"]:
         for sprite in RUNTIME_STATE["tileset_group"]:
             RUNTIME_STATE["overworld_sprites"].add(sprite, layer=1)
@@ -2592,7 +3031,12 @@ def initialize_overworld():
         #    RUNTIME_STATE["ui_sprites"].add(sprite, layer=6)
         FADE_TIME = 1000
         music_channel.fadeout(FADE_TIME)
-        music_channel.play(battle_music_sound, loops=-1, fade_ms=FADE_TIME)
+        if RUNTIME_STATE["level"] == 5:
+            music_channel.play(final_battle_music_intro_sound, fade_ms=FADE_TIME)
+            CURRENT_MUSIC = 'final'
+        else:
+            music_channel.play(battle_music_intro_sound, fade_ms=FADE_TIME)
+            CURRENT_MUSIC = 'battle'
         RUNTIME_STATE["speed_meter"] = Speedometer_Group()
         for sprite in RUNTIME_STATE["speed_meter"]:
             RUNTIME_STATE["ui_sprites"].add(sprite, layer=5)
@@ -2628,7 +3072,7 @@ def get_current_dialog():
     if len(dialog_list) > 2:
         talking_head = dialog_list[2]
     else:
-        talking_head = None
+        talking_head = 'None'
     return text, options, talking_head
 
 def apply_selected_buff(buff):
@@ -2640,6 +3084,7 @@ def apply_selected_buff(buff):
         RUNTIME_STATE["damage"] += 1
     elif buff == "+.2 Min Speed Mult":
         RUNTIME_STATE["min_speed_mult"] += .2
+    play_powerup_sound()
 
 def change_level_selection():
     global RUNTIME_STATE
@@ -2679,7 +3124,7 @@ def parse_dialog_tsv(path):
 
             # Options
             if row["Options"].strip().lower() == "yes":
-                options = ["+3 HP", "+.2 Min Speed Mult", "+1 Damage"]  # or placeholder like ["OPTION_1", "OPTION_2"]
+                options = ["+3 HP", "+.2 Min Speed Mult"]  # or placeholder like ["OPTION_1", "OPTION_2"]
             else:
                 options = None
 
@@ -2695,6 +3140,33 @@ def parse_dialog_tsv(path):
     # Convert defaultdict → ordered list
     return [dialog_groups[i] for i in sorted(dialog_groups)]
 
+
+
+def ANIMATE_ALL_HEARTS():
+    global RUNTIME_STATE
+    now = pygame.time.get_ticks()
+    
+    if now - RUNTIME_STATE["last_heart_frame_tick"] < 400:
+        return
+
+    RUNTIME_STATE["last_heart_frame_tick"] = now
+
+    # Advance frame
+    RUNTIME_STATE["heart_frame"] += RUNTIME_STATE["heart_direction"]
+
+    # Bounce at ends
+    if RUNTIME_STATE["heart_frame"] >= 3:
+        RUNTIME_STATE["heart_frame"] = 3
+        RUNTIME_STATE["heart_direction"] = -1
+    elif RUNTIME_STATE["heart_frame"] <= 1:
+        RUNTIME_STATE["heart_frame"] = 1
+        RUNTIME_STATE["heart_direction"] = 1
+
+    # Update sprite
+    for heart in RUNTIME_STATE["hearts_list"]:
+        frame_key = f"UI_Heart_{RUNTIME_STATE["heart_frame"]:02d}.png"
+
+        heart.surf = IMAGES_DICT[frame_key]
 
 def ui_animations():
     hearts = RUNTIME_STATE["hearts_list"]
@@ -2716,8 +3188,7 @@ def ui_animations():
 
         dead_hearts.append(heart)
         hearts.pop(i)
-    for heart in hearts:
-        heart.animate_heart()
+    ANIMATE_ALL_HEARTS()
     for heart in dead_hearts:
         heart.animate_heart()
     if RUNTIME_STATE["speed_meter"] != None:
@@ -2778,18 +3249,25 @@ def overworld_phase():
 
 def levelclear_phase():
     global RUNTIME_STATE
+    global CURRENT_MUSIC
     if not RUNTIME_STATE["end_overlay"]:
         print('Level Clear!')
         RUNTIME_STATE["end_overlay"] = Level_Clear_Screen()
         RUNTIME_STATE["ui_sprites"].add(RUNTIME_STATE["end_overlay"], layer=9)
         RUNTIME_STATE["level_cleared_tick"] = pygame.time.get_ticks()
+        if RUNTIME_STATE["level"] == 5:
+            CURRENT_MUSIC = ''
+            music_channel.play(final_battle_music_outro_sound)
+        else:
+            CURRENT_MUSIC = ''
+            music_channel.play(battle_music_outro_sound)
     if RUNTIME_STATE["level_cleared_tick"] != None:
         if RUNTIME_STATE["level_cleared_tick"] != 'Done':
             current_time = pygame.time.get_ticks()
             if current_time - RUNTIME_STATE["level_cleared_tick"] >= 750:
                 kill_and_delete(RUNTIME_STATE["end_overlay"])
                 RUNTIME_STATE["end_overlay"] = Level_Clear_Continue_Screen()
-                RUNTIME_STATE["ui_sprites"].add(RUNTIME_STATE["end_overlay"], layer=1)
+                RUNTIME_STATE["ui_sprites"].add(RUNTIME_STATE["end_overlay"], layer=9)
                 RUNTIME_STATE["level_cleared_tick"] = 'Done'
     if RUNTIME_STATE["level_cleared_tick"] == 'Done':
         if RUNTIME_STATE["just_pressed"] and RUNTIME_STATE["just_pressed"]["action"]:
@@ -2800,9 +3278,13 @@ def levelclear_phase():
                     kill_and_delete(bullet)
                 RUNTIME_STATE["bullets"] = []
             RUNTIME_STATE["current_phase"] = transition_phase
+            RUNTIME_STATE["previous_hp"] = RUNTIME_STATE["player_hp"]
+            RUNTIME_STATE["previous_damage"] = RUNTIME_STATE["damage"]
+            RUNTIME_STATE["previous_min_speed_mult"] = RUNTIME_STATE["min_speed_mult"]
 
 def transition_phase():
     global RUNTIME_STATE
+    global CURRENT_MUSIC
     if not RUNTIME_STATE["black_screen"]:
         print('Transition_Phase!')
         RUNTIME_STATE["black_screen"] = Black_Screen()
@@ -2820,7 +3302,8 @@ def transition_phase():
                     RUNTIME_STATE["end_overlay"] = None
                     FADE_TIME = 1000
                     music_channel.fadeout(FADE_TIME)
-                    music_channel.play(main_music_sound, loops=-1, fade_ms=FADE_TIME)
+                    music_channel.play(main_music_intro_sound, fade_ms=FADE_TIME)
+                    CURRENT_MUSIC = 'cafe'
                     for sprite in RUNTIME_STATE["speed_meter"]:
                         kill_and_delete(sprite)
                     RUNTIME_STATE["speed_meter"] = None
@@ -2838,7 +3321,7 @@ def diner_phase():
     global RUNTIME_STATE
     if not RUNTIME_STATE["DinerTalkBox"]:
         dialog, options, talking_head = get_current_dialog()
-        if talking_head != None:
+        if talking_head != 'None':
             if RUNTIME_STATE["curr_talking_head"] == None:
                 RUNTIME_STATE["curr_talking_head"] = Talking_Head(character=talking_head)
                 RUNTIME_STATE["ui_sprites"].add(RUNTIME_STATE["curr_talking_head"], layer=2)
@@ -2857,12 +3340,20 @@ def diner_phase():
             if RUNTIME_STATE["curr_dialog_tree_level"] <= len(RUNTIME_STATE["curr_dialog_tree"]):
                 dialog, options, talking_head = get_current_dialog()
                 kill_menu_and_clear()
-                if talking_head != None:
-                    print('add talking head here')
-                    if RUNTIME_STATE["curr_talking_head"] == None:
-                        print('added')
+                if RUNTIME_STATE["curr_talking_head"] == None:
+                    curr_character = 'None'
+                else:
+                    curr_character = RUNTIME_STATE["curr_talking_head"].character
+                if talking_head != curr_character:
+                    if talking_head != 'None':
+                        if RUNTIME_STATE["curr_talking_head"] != None:
+                            print('add talking head here')
+                            kill_and_delete(RUNTIME_STATE["curr_talking_head"])
                         RUNTIME_STATE["curr_talking_head"] = Talking_Head(character=talking_head)
                         RUNTIME_STATE["ui_sprites"].add(RUNTIME_STATE["curr_talking_head"], layer=2)
+                    else:
+                        kill_and_delete(RUNTIME_STATE["curr_talking_head"])
+                        RUNTIME_STATE["curr_talking_head"] = None
                 RUNTIME_STATE["DinerTalkBox"] = Overworld_Menu(dialog, options=options, text_type='not_arrow')
                 for sprite in RUNTIME_STATE["DinerTalkBox"]:
                     RUNTIME_STATE["ui_sprites"].add(sprite, layer=3)
@@ -2873,12 +3364,20 @@ def diner_phase():
             if RUNTIME_STATE["curr_dialog_tree_level"] <= len(RUNTIME_STATE["curr_dialog_tree"]):
                 dialog, options, talking_head = get_current_dialog()
                 kill_menu_and_clear()
-                if talking_head != None:
-                    print('add talking head there')
-                    if RUNTIME_STATE["curr_talking_head"] == None:
-                        print('added')
+                if RUNTIME_STATE["curr_talking_head"] == None:
+                    curr_character = 'None'
+                else:
+                    curr_character = RUNTIME_STATE["curr_talking_head"].character
+                if talking_head != curr_character:
+                    if talking_head != 'None':
+                        if RUNTIME_STATE["curr_talking_head"] != None:
+                            print('add talking head here')
+                            kill_and_delete(RUNTIME_STATE["curr_talking_head"])
                         RUNTIME_STATE["curr_talking_head"] = Talking_Head(character=talking_head)
                         RUNTIME_STATE["ui_sprites"].add(RUNTIME_STATE["curr_talking_head"], layer=2)
+                    else:
+                        kill_and_delete(RUNTIME_STATE["curr_talking_head"])
+                        RUNTIME_STATE["curr_talking_head"] = None
                 RUNTIME_STATE["DinerTalkBox"] = Overworld_Menu(dialog, options=options, text_type='not_arrow')
                 for sprite in RUNTIME_STATE["DinerTalkBox"]:
                     RUNTIME_STATE["ui_sprites"].add(sprite, layer=3)
@@ -2922,16 +3421,116 @@ def transition_back_to_stage_phase():
 
 def gameover_phase():
     global RUNTIME_STATE
-    if not RUNTIME_STATE["end_overlay"]:
+    global CURRENT_MUSIC
+    if not RUNTIME_STATE["player"].rip:
+        FADE_TIME = 1000
+        music_channel.fadeout(FADE_TIME)
+        CURRENT_MUSIC = ''
+        RUNTIME_STATE["player"].rip = True
+        RUNTIME_STATE["player"].rip_frame = 1
+        full_image = IMAGES_DICT["Ducky_DuckyRIP_01.png"]
+        RUNTIME_STATE["player"].surf = full_image
+        RUNTIME_STATE["player"].rip_start = pygame.time.get_ticks()
+        play_ducky_death_sound()
+    elif RUNTIME_STATE["player"].rip_frame < 16 and not RUNTIME_STATE["player"].rip_and_dead:
+        RUNTIME_STATE["player"].character_moving_animation()
+    elif not RUNTIME_STATE["end_overlay"]:
         print('Player defeated!')
         RUNTIME_STATE["end_overlay"] = Game_Over_Screen()
         RUNTIME_STATE["ui_sprites"].add(RUNTIME_STATE["end_overlay"], layer=9)
+        RUNTIME_STATE["end_overlay_text"] = Game_Over_Screen_Text()
+        RUNTIME_STATE["ui_sprites"].add(RUNTIME_STATE["end_overlay_text"], layer=10)
+        
+        RUNTIME_STATE["retry_level_button"] = Retry_Level_Button()
+        RUNTIME_STATE["ui_sprites"].add(RUNTIME_STATE["retry_level_button"], layer=10)
+        RUNTIME_STATE["restart_game_button"] = Restart_Game_Button()
+        RUNTIME_STATE["ui_sprites"].add(RUNTIME_STATE["restart_game_button"], layer=10)
+        RUNTIME_STATE["exit_game_button"] = Exit_Game_Button()
+        RUNTIME_STATE["ui_sprites"].add(RUNTIME_STATE["exit_game_button"], layer=10)
+        music_channel.play(game_over_sound)
+    elif RUNTIME_STATE["end_overlay_text"].increase_alpha:
+        print('fading in!')
+        RUNTIME_STATE["end_overlay_text"].fade_in_full()
+        RUNTIME_STATE["retry_level_button"].fade_in_full()
+        RUNTIME_STATE["restart_game_button"].fade_in_full()
+        RUNTIME_STATE["exit_game_button"].fade_in_full()
+    else:
+        RUNTIME_STATE["game_over_selection"] = 0
+        RUNTIME_STATE["current_phase"] = gameover_selection_phase
+        RUNTIME_STATE["hearts_list"] = []
+
+def gameover_selection_phase():
+    global RUNTIME_STATE
+    global CURRENT_MUSIC
+    if RUNTIME_STATE["game_over_selection"] == 0 and RUNTIME_STATE["just_pressed"]["action"]: #Retry Level is Selected
+        print('Retry Level Selected!')
+        final_confirm_sound()
+        for sprite in RUNTIME_STATE["overworld_sprites"]:
+            kill_and_delete(sprite)
+        for sprite in RUNTIME_STATE["ui_sprites"]:
+            kill_and_delete(sprite)
+        reset_level_variables()
+        RUNTIME_STATE["title_screen"] = Diner_Screen()
+        RUNTIME_STATE["ui_sprites"].add(RUNTIME_STATE["title_screen"], layer=1)
+        RUNTIME_STATE["hearts_list"] = []
+        i = 0
+        heart_start = 16
+        while i < RUNTIME_STATE["player_hp"]:
+            curr_heart = HP_Heart(top_left=(heart_start,16))
+            RUNTIME_STATE["hearts_list"].append(curr_heart)
+            RUNTIME_STATE["ui_sprites"].add(curr_heart, layer=5)
+            RUNTIME_STATE["dead_hearts_list"] = []
+            i = i + 1
+            heart_start += 20
+        FADE_TIME = 1000
+        music_channel.fadeout(FADE_TIME)
+        music_channel.play(main_music_intro_sound)
+        CURRENT_MUSIC = ''
+        RUNTIME_STATE["current_phase"] = diner_phase
+    elif RUNTIME_STATE["game_over_selection"] == 0 and RUNTIME_STATE["just_pressed"]["down"]: #If 0 and down, go to Restart Game
+        RUNTIME_STATE["retry_level_button"].surf = IMAGES_DICT["UI_retry level button_dark.png"]
+        RUNTIME_STATE["restart_game_button"].surf = IMAGES_DICT["UI_restart game button.png"]
+        RUNTIME_STATE["added_pause_screen"] = False
+        change_selection_sound()
+        RUNTIME_STATE["game_over_selection"] = 1
+        print(RUNTIME_STATE["game_over_selection"])
+    elif RUNTIME_STATE["game_over_selection"] == 1 and RUNTIME_STATE["just_pressed"]["up"]: #If 1 and up, go to Retry Level
+        RUNTIME_STATE["retry_level_button"].surf = IMAGES_DICT["UI_retry level button.png"]
+        RUNTIME_STATE["restart_game_button"].surf = IMAGES_DICT["UI_restart game button_dark.png"]
+        change_selection_sound()
+        RUNTIME_STATE["game_over_selection"] = 0
+        print(RUNTIME_STATE["game_over_selection"])
+    elif RUNTIME_STATE["game_over_selection"] == 1 and RUNTIME_STATE["just_pressed"]["action"]: #Restart Game is Selected
+        print('Restart Game Selected!')
+        final_confirm_sound()
+        for sprite in RUNTIME_STATE["overworld_sprites"]:
+            kill_and_delete(sprite)
+        for sprite in RUNTIME_STATE["ui_sprites"]:
+            kill_and_delete(sprite)
+        FADE_TIME = 1000
+        music_channel.fadeout(FADE_TIME)
+        music_channel.play(main_music_intro_sound)
+        CURRENT_MUSIC = ''
+        reset_all_variables()
+    elif RUNTIME_STATE["game_over_selection"] == 1 and RUNTIME_STATE["just_pressed"]["down"]: #If 1 and down, go to Exit Game
+        RUNTIME_STATE["restart_game_button"].surf = IMAGES_DICT["UI_restart game button_dark.png"]
+        RUNTIME_STATE["exit_game_button"].surf = IMAGES_DICT["UI_exit game button.png"]
+        change_selection_sound()
+        RUNTIME_STATE["game_over_selection"] = 2
+        print(RUNTIME_STATE["game_over_selection"])
+    elif RUNTIME_STATE["game_over_selection"] == 2 and RUNTIME_STATE["just_pressed"]["action"]: #Exit Game is Selected
+        print('Exit Game Selected!')
+        pygame.quit()
+        sys.exit()
+    elif RUNTIME_STATE["game_over_selection"] == 2 and RUNTIME_STATE["just_pressed"]["up"]: #If 2 and up, go to Restart Game
+        RUNTIME_STATE["restart_game_button"].surf = IMAGES_DICT["UI_restart game button.png"]
+        RUNTIME_STATE["exit_game_button"].surf = IMAGES_DICT["UI_exit game button_dark.png"]
+        change_selection_sound()
+        RUNTIME_STATE["game_over_selection"] = 1
+        print(RUNTIME_STATE["game_over_selection"])
 
 
 #---------VARIABLES
-
-
-#Running state, variables that would not get saved to a .json
 RUNTIME_STATE = {
 "running": True,
 "clock": pygame.time.Clock(),
@@ -2946,7 +3545,7 @@ RUNTIME_STATE = {
 "top_display_string": 'FPS: 42069',
 "bullets": [],
 "speed_mult": 1.0,
-"player_hp": 7,
+"player_hp": 7, #CHANGE BACK TO 7
 "end_overlay": None,
 "level": 0, #should be 0
 "level_cleared_tick": None,
@@ -2956,25 +3555,7 @@ RUNTIME_STATE = {
 "min_speed_mult": 1.00,
 "current_bonk_pulse": 5
 }
-
-#Set maps
 maps_path = os.path.join(PATH_START, "Maps")
-'''
-
-level_path = os.path.join(maps_path, f"{str(RUNTIME_STATE["level"])}")
-backgroundtiles_path = os.path.join(level_path, "BackgroundTiles.txt")
-tile_map = pd.read_csv(backgroundtiles_path, sep='\t', header=None)
-buildingmap_path = os.path.join(level_path, "Buildings.txt")
-building_map_fromsheet = pd.read_csv(buildingmap_path, sep='\t', header=None)
-enemymap_path = os.path.join(level_path, "Enemy.txt")
-enemy_map_fromsheet = pd.read_csv(enemymap_path, sep='\t', header=None)
-
-
-RUNTIME_STATE["tileset_group"] = Tileset_Group(tile_map) #save this?
-RUNTIME_STATE["building_group"] = Building_Group(building_map_fromsheet) #save this?
-RUNTIME_STATE["enemy_group"] = Enemy_Group(enemy_map_fromsheet) #save this?
-'''
-
 RUNTIME_STATE["pressed_keys"] = {
     "up": False,
     "down": False,
@@ -3004,97 +3585,259 @@ RUNTIME_STATE["curr_talking_head"] = None
 RUNTIME_STATE["TopStatusBar"] = None
 RUNTIME_STATE["speed_meter"] = None
 RUNTIME_STATE["other_ui"] = None
+RUNTIME_STATE["end_overlay_text"] = None
+RUNTIME_STATE["retry_level_button"] = None
+RUNTIME_STATE["restart_game_button"] = None
+RUNTIME_STATE["exit_game_button"] = None
+RUNTIME_STATE["previous_hp"] = 7
+RUNTIME_STATE["previous_damage"] = 1
+RUNTIME_STATE["previous_min_speed_mult"] = 1.0
+RUNTIME_STATE["last_heart_frame_tick"] = pygame.time.get_ticks()
+RUNTIME_STATE["heart_direction"] = 1
+RUNTIME_STATE["heart_frame"] = 1
 
 
+def reset_all_variables():
+    RUNTIME_STATE["in_menu"] =  False
+    RUNTIME_STATE["current_phase"] = titlescreen_phase
+    RUNTIME_STATE["key_pressed"] = False
+    RUNTIME_STATE["title_screen"] = None
+    RUNTIME_STATE["tileset_current"] = False
+    RUNTIME_STATE["top_display_string"] = 'FPS: 42069'
+    RUNTIME_STATE["bullets"] = []
+    RUNTIME_STATE["speed_mult"] = 1.0
+    RUNTIME_STATE["player_hp"] = 7 #CHANGE BACK TO 7
+    RUNTIME_STATE["end_overlay"] = None
+    RUNTIME_STATE["level"] = 0 #should be 0
+    RUNTIME_STATE["level_cleared_tick"] = None
+    RUNTIME_STATE["black_screen"] = None
+    RUNTIME_STATE["DinerTalkBox"] = None
+    RUNTIME_STATE["damage"] = 1
+    RUNTIME_STATE["min_speed_mult"] = 1.00
+    RUNTIME_STATE["current_bonk_pulse"] = 5
+    RUNTIME_STATE["main_dialog_tree"] = dialog_tree
+    RUNTIME_STATE["curr_dialog_tree"] = RUNTIME_STATE["main_dialog_tree"][0]
+    RUNTIME_STATE["curr_dialog_tree_level"] = 1
+    RUNTIME_STATE["curr_talking_head"] = None
+    RUNTIME_STATE["TopStatusBar"] = None
+    RUNTIME_STATE["speed_meter"] = None
+    RUNTIME_STATE["other_ui"] = None
+    RUNTIME_STATE["end_overlay_text"] = None
+    RUNTIME_STATE["retry_level_button"] = None
+    RUNTIME_STATE["restart_game_button"] = None
+    RUNTIME_STATE["exit_game_button"] = None
+    RUNTIME_STATE["previous_hp"] = 1
+    RUNTIME_STATE["previous_damage"] = 1
+    RUNTIME_STATE["previous_min_speed_mult"] = 1.0
+    RUNTIME_STATE["last_heart_frame_tick"] = pygame.time.get_ticks()
+    RUNTIME_STATE["heart_direction"] = 1
+    RUNTIME_STATE["heart_frame"] = 1
+
+
+def reset_level_variables():
+    RUNTIME_STATE["in_menu"] =  False
+    RUNTIME_STATE["current_phase"] = diner_phase
+    RUNTIME_STATE["key_pressed"] = False
+    RUNTIME_STATE["tileset_current"] = False
+    RUNTIME_STATE["top_display_string"] = 'FPS: 42069'
+    RUNTIME_STATE["bullets"] = []
+    RUNTIME_STATE["speed_mult"] = 1.0
+    RUNTIME_STATE["player_hp"] = RUNTIME_STATE["previous_hp"]
+    RUNTIME_STATE["end_overlay"] = None
+    RUNTIME_STATE["level"] -= 1
+    RUNTIME_STATE["level_cleared_tick"] = None
+    RUNTIME_STATE["black_screen"] = None
+    RUNTIME_STATE["DinerTalkBox"] = None
+    RUNTIME_STATE["damage"] = RUNTIME_STATE["previous_damage"]
+    RUNTIME_STATE["min_speed_mult"] = RUNTIME_STATE["previous_min_speed_mult"]
+    RUNTIME_STATE["current_bonk_pulse"] = 5
+    RUNTIME_STATE["main_dialog_tree"] = dialog_tree
+    RUNTIME_STATE["curr_dialog_tree"] = RUNTIME_STATE["main_dialog_tree"][RUNTIME_STATE["level"]]
+    RUNTIME_STATE["curr_dialog_tree_level"] = 1
+    RUNTIME_STATE["curr_talking_head"] = None
+    RUNTIME_STATE["TopStatusBar"] = None
+    RUNTIME_STATE["speed_meter"] = None
+    RUNTIME_STATE["other_ui"] = None
+    RUNTIME_STATE["end_overlay_text"] = None
+    RUNTIME_STATE["retry_level_button"] = None
+    RUNTIME_STATE["restart_game_button"] = None
+    RUNTIME_STATE["exit_game_button"] = None
+    RUNTIME_STATE["last_heart_frame_tick"] = pygame.time.get_ticks()
+    RUNTIME_STATE["heart_direction"] = 1
+    RUNTIME_STATE["heart_frame"] = 1
 
 #---------SOUND EFFECTS
 
 SFX_DICT = {}
 
+SFX_VOLUME = {
+    # gunshots
+    "SFX_GUNSHOT 1.wav": 1.0,
+    "SFX_FISH SHOT SINGLE.wav": 0.6,
+
+    # UI
+    "SFX_ExitAllMenus.wav": 0.7,
+    "SFX_UI CONFIRM.wav": 1.0,
+    "SFX_FinalConfirm.wav": 0.75,
+    "SFX_UI SELECT.wav": 1.0,
+    "SFX_DUCKY BUMP_ PINBALL.wav": 1.0,
+
+    # combat
+    "SFX_DAMAGE IMPACT.wav": 1.0,
+    "SFX_DAMAGE IMPACT_ BULLET TIME.wav": 1.0,
+
+    # alerts
+    "SFX_PigeonAlert.wav": 0.75,
+    "SFX_FISH EMERGE.wav": 0.65,
+    "SFX_FISH DIVE.wav": 0.65,
+
+    # collisions
+    "SFX_Collision.wav": 0.6,
+    "SFX_BuildingCollision.wav": 0.65,
+}
+
 def load_sfx_from_folder(base_path, folder_names, target_dict):
     for folder in folder_names:
         folder_path = os.path.join(base_path, folder)
         if not os.path.isdir(folder_path):
-            continue  # skip if folder doesn't exist
+            continue
 
         folder_key = os.path.basename(folder_path)
         for file in os.listdir(folder_path):
             file_path = os.path.join(folder_path, file)
             if os.path.isfile(file_path):
+                sound = pygame.mixer.Sound(file_path)
+
+               
+
                 image_key = f"{folder_key}_{file}"
-                target_dict[image_key] = pygame.mixer.Sound(file_path)
+
+
+                # Apply per-sound volume if defined
+
+                volume = SFX_VOLUME.get(image_key, 1.0)
+                sound.set_volume(volume)
+                target_dict[image_key] = sound
+
 
 # Usage
 folders_to_load = ["SFX"]
 
 load_sfx_from_folder(PATH_START, folders_to_load, SFX_DICT)
 
-def walking_sound():
-    if not walking_sfx_channel.get_busy():
-        walking_sfx_channel.play(SFX_DICT["SFX_Walk.wav"])
 
-def exit_all_menus_sound():
+def final_confirm_sound():
     #if not menu_sfx_channel.get_busy():
-    menu_sfx_channel.play(SFX_DICT["SFX_ExitAllMenus.wav"])
+    play_sfx(SFX_DICT["SFX_UI CONFIRM.wav"])
 
 def next_menu_sound():
     #if not menu_sfx_channel.get_busy():
-    menu_sfx_channel.play(SFX_DICT["SFX_NextMenu.wav"])
+    play_sfx(SFX_DICT["SFX_NextMenu.wav"])
 
-def final_confirm_sound():
-    menu_sfx_channel.play(SFX_DICT["SFX_FinalConfirm.wav"])
 
 def change_selection_sound():
-    menu_sfx_channel.play(SFX_DICT["SFX_ChangeSelection.wav"])
+    play_sfx(SFX_DICT["SFX_UI SELECT.wav"])
 
 def error_selection_sound():
-    menu_sfx_channel.play(SFX_DICT["SFX_Error.wav"])
+    play_sfx(SFX_DICT["SFX_DUCKY BUMP_ PINBALL.wav"])
 
 def play_damage_sound():
-    damage_channel.play(SFX_DICT["SFX_faint 02.wav"])
+    play_sfx(SFX_DICT["SFX_DAMAGE IMPACT.wav"])
 
 def play_faint_sound():
-    faint_channel.play(SFX_DICT["SFX_high damage_faint 02.wav"])
+    play_sfx(SFX_DICT["SFX_DAMAGE IMPACT_ BULLET TIME.wav"])
 
 def play_fish_shoot_sound():
-    gunshot_channel.play(SFX_DICT["SFX_FishShot.wav"])
+    play_sfx(SFX_DICT["SFX_FISH SHOT SINGLE.wav"], priority=10)
 
 def play_shoot_sound():
-    gunshot_channel.play(SFX_DICT["SFX_gunshot_replace.mp3"])
+    play_sfx(SFX_DICT["SFX_GUNSHOT 1.wav"], priority=10)
+
+def play_donp_shoot_sound():
+    play_sfx(SFX_DICT["SFX_GUNSHOT 2.wav"], priority=10)
 
 def play_alert_sound():
-    alert_channel.play(SFX_DICT["SFX_PigeonAlert.wav"])
+    num = random.randint(1, 3)
+    play_sfx(SFX_DICT[f"SFX_PIGEON ALERT {str(num)}.wav"])
+
+def play_boss_alert_sound():
+    play_sfx(SFX_DICT["SFX_PigeonAlert.wav"])
 
 def play_fish_emerge_sound():
-    alert_channel.play(SFX_DICT["SFX_FishEmerge.wav"])
+    play_sfx(SFX_DICT["SFX_FISH EMERGE.wav"])
 
 def play_fish_dive_sound():
-    alert_channel.play(SFX_DICT["SFX_FishDive.wav"])
+    play_sfx(SFX_DICT["SFX_FISH DIVE.wav"])
 
 def play_collision_sound():
-    collision_channel.play(SFX_DICT["SFX_Collision.wav"])
+    play_sfx(SFX_DICT["SFX_Collision.wav"])
 
 def play_building_collision_sound():
-    collision_channel.play(SFX_DICT["SFX_BuildingCollision.wav"])
+    play_sfx(SFX_DICT["SFX_BuildingCollision.wav"])
+
+def play_ducky_damage_sound():
+    play_sfx(SFX_DICT["SFX_DUCKY SQUEAK.wav"])
+
+def play_ducky_death_sound():
+    play_sfx(SFX_DICT["SFX_DUCKY RIP 1.wav"])
+
+def play_powerup_sound():
+    play_sfx(SFX_DICT["SFX_POWERUP BUFF.wav"])
 
 #---------MUSIC
 music_channel = pygame.mixer.Channel(0)
 
 music_folder_path = os.path.join(PATH_START, "Music") #Music regularly
-battle_music_path = os.path.join(music_folder_path, "Ducky fight sketch 04_02_26.mp3")
+battle_music_path = os.path.join(music_folder_path, "Ducky Fight Theme MAIN LOOP.wav")
 battle_music_sound = pygame.mixer.Sound(battle_music_path)
-main_theme_path = os.path.join(music_folder_path, "Main theme sketch 03_02_26.mp3")
+battle_music_intro_path = os.path.join(music_folder_path, "Ducky Fight Theme INTRO.wav")
+battle_music_intro_sound = pygame.mixer.Sound(battle_music_intro_path)
+battle_music_outro_path = os.path.join(music_folder_path, "Ducky Fight Theme OUTRO.wav")
+battle_music_outro_sound = pygame.mixer.Sound(battle_music_outro_path)
+final_battle_music_path = os.path.join(music_folder_path, "Don Pigeon Showdown MAIN LOOP.wav")
+final_battle_music_sound = pygame.mixer.Sound(final_battle_music_path)
+final_battle_music_intro_path = os.path.join(music_folder_path, "Don Pigeon Showdown INTRO.wav")
+final_battle_music_intro_sound = pygame.mixer.Sound(final_battle_music_intro_path)
+final_battle_music_outro_path = os.path.join(music_folder_path, "Don Pigeon Showdown OUTRO.wav")
+final_battle_music_outro_sound = pygame.mixer.Sound(final_battle_music_outro_path)
+main_theme_path = os.path.join(music_folder_path, "Cafe Theme MAIN LOOP.wav")
 main_music_sound = pygame.mixer.Sound(main_theme_path)
+main_theme_intro_path = os.path.join(music_folder_path, "Cafe Theme INTRO.wav")
+main_music_intro_sound = pygame.mixer.Sound(main_theme_intro_path)
+game_over_path = os.path.join(music_folder_path, "GAME OVER JINGLE.wav")
+game_over_sound = pygame.mixer.Sound(game_over_path)
 
-music_channel.play(main_music_sound, loops=-1)  # loops=-1 for infinite loop
-menu_sfx_channel = pygame.mixer.Channel(1)  # Find an available channel
-walking_sfx_channel = pygame.mixer.Channel(2)
-damage_channel = pygame.mixer.Channel(3)
-faint_channel = pygame.mixer.Channel(4)
-gunshot_channel = pygame.mixer.Channel(5)
-alert_channel = pygame.mixer.Channel(6)
-collision_channel = pygame.mixer.Channel(7)
-gunshot_channel.set_volume(0.6)
+music_channel.play(main_music_intro_sound)  # loops=-1 for infinite loop
+SFX_CHANNEL_IDS = [1, 2, 3, 4, 5, 6, 7]
+SFX_CHANNELS = [pygame.mixer.Channel(i) for i in SFX_CHANNEL_IDS]
+CHANNEL_PRIORITY = {ch: 0 for ch in SFX_CHANNELS}
+
+CURRENT_MUSIC = 'cafe'
+
+def swap_music():
+    if not music_channel.get_busy():
+        if CURRENT_MUSIC == 'cafe':
+            music_channel.play(main_music_sound, loops=-1)
+        elif CURRENT_MUSIC == 'battle':
+            music_channel.play(battle_music_sound, loops=-1)
+        elif CURRENT_MUSIC == 'final':
+            music_channel.play(final_battle_music_sound, loops=-1)
+
+
+
+def play_sfx(sound, *, priority=0):
+    # Try to find a free channel
+    for ch in SFX_CHANNELS:
+        if not ch.get_busy():
+            ch.play(sound)
+            CHANNEL_PRIORITY[ch] = priority
+            return
+
+    # No free channels → steal lowest priority
+    victim = min(SFX_CHANNELS, key=lambda c: CHANNEL_PRIORITY[c])
+    victim.stop()
+    victim.play(sound)
+    CHANNEL_PRIORITY[victim] = priority
 
 #---------MAIN LOGIC
 def main():
@@ -3121,7 +3864,7 @@ def main():
             if RUNTIME_STATE["current_phase"] != titlescreen_phase:
                 ui_animations()
 
-        
+        swap_music()
         
         # Clear the screen
         #render_start = time.time()
@@ -3223,3 +3966,42 @@ main()
 #Pigeons need hit animation
 #Pigeons need death animation
 #Level Clear screen needs replaced with a nice looking Level Clear message. Does not need to be full screen of artwork
+
+
+#FINAL PUSH NOTES
+#TITLE SCREEN: AWAITING ASSETS
+#DIALOG: NOT DONE
+
+#THINGS I CAN IMPLEMENT CURRENTLY:
+#EVERY LEVEL BESIDES THE FIRST THREE
+#PAUSE LOGIC
+#PIGEON HIT/DEATH
+#PIGEON LEVEL 2 PROGRAMMING
+#DON PIGEON PROGRAMMING
+
+#LEVELS
+#TUTORIAL 1-DONE
+#D-STAR TUTORIAL-DONE
+#PIGEON 1- ADD PIGEON DAMAGE/DEATH, otherwise done 
+#PIGEON & SPIKES
+#FISH 1-DONE
+#FISH & ICE
+#TRAIN ENTRANCE
+#TRAIN LEVEL W/ LEVEL 2 PIGEONS
+#DON PIGEON FIGHT
+
+
+#1 HOURS REMAIN-FINAL PRIORITIES:
+#GOING TO HAPPEN
+#IMPLEMENT FIXED DIALOGUE
+#SYNC HEARTS
+
+#REALLY WANT TO HAPPEN, HOPEFULLY
+#FACIAL ANIMATIONS
+#ADD DON PIGEON COO
+
+#NOT HAPPENING
+#TRAIN ENTRANCE LEVEL, ICE BLOCK AND SPIKES WILL BE USED HERE
+#REGULAR TRAIN LEVEL, WILL START WITH REGULAR PIGEONS
+#ROTATE RED PIGEONS BACK INTO THE TRAIN LEVEL
+#ADDITIONAL LEVELS

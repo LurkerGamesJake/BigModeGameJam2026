@@ -1,24 +1,74 @@
 Speech	Line	Options	TalkingHead
-0	"???: I'll be frank, I don't think you're up for the task, but I'm willing to give ya a shot."	No	Mystery
-0	???: There's some wise guy slumberin' on the lake. Take care of him.	No	Mystery
-0	"???: Woah, not so fast bud. Going around the lake in the winter isn't so easy."	No	Mystery
-0	???: You'll slide forward automatically. You'll look like a jerkoff if you press up or down.	No	Mystery
-0	"???: Press space to break. You can turn to the left or the right, but it's like a boat."	No	Mystery
-0	"???: Press enter to shoot. That's all there is to it. See you on the other side, my friend."	No	Mystery
-1	???: Good job making your bones. But there's still a long road to respect	No	Mystery
-1	???: Another part of the lake's got friends stompin' about it.	No	Mystery
-1	"???: Friends of a friend, not a friend of ours. Give them a warm welcome."	No	Mystery
-1	"???: The more punks you whack, the higher your speed mult goes."	No	Mystery
-1	"???: The faster you'll go, too. But you'll have a harder time braking. "	No	Mystery
-1	"???: If you bump into something, your speed mult will go down."	No	Mystery
-1	"???: And god forbid someone shootcha or hits ya, the whole thing will reset."	No	Mystery
-1	"???: Alright, enough yammerin'. Get out there kid."	No	Mystery
-2	"???: Look who it is! Alright kid, allow me to formally introduce myself."	No	Mystery
-2	???: The name's Don Pigeon. I hear you wanna be made capo?	No	Don_Pigeon
-2	"Don Pigeon: Well, I wanna fuck Daisy Duck."	No	Don_Pigeon
-2	"Don Pigeon: I'm breaking your balls. Here, take somethin'."	Yes	Don_Pigeon
-2	Don Pigeon: Keep working with me and I'll take care of ya.	No	Don_Pigeon
-3	Don Pigeon: Welcome back Slick. What'll it be this time?	Yes	Don_Pigeon
-3	"Don Pigeon: Listen, I got a job coming up-not this next one, but it's some top level shit."	No	Don_Pigeon
-3	Don Pigeon: It comes from a friend of mine who runs the Luxury Liner	No	Don_Pigeon
-3	Don Pigeon: It's where all the best earners and capos relax.	No	Don_Pigeon
+0	The name's Ducky. I've got a full time job keeping the waters of this lake clean.	No	None
+0	I always take the first flight south for a migration vacation when the waters freeze over.	No	None
+0	That was until my cousin's best friend's sister in law was killed.	No	None
+0	Coroner said it was a quack overdose....	No	None
+0	But something smelt fowl.	No	None
+0	I traced the counterfeit bills found at the scene back to a network of feathered fiends.	No	None
+0	"Now, I'm spending my winter undercover. New name, new identity."	No	None
+0	I've gotta smooth talk my way to a made duck and infiltrate The Flock...	No	None
+0	"???: I'll be frank, Slick, I don't think you're up for the task. But I'm willing to give ya a shot."	No	Neutral
+0	"???: There's some wise guy slumberin' on the lake. Ya might even call him ""a sitting duck."""	No	Neutral
+0	???: Except he's no duck. He's actually....	No	Neutral
+0	"???: The Walrus. Yeah, that one."	No	Neutral
+0	"???: Take care of him for me, and then we can talk about a spot in The Flock for ya."	No	Neutral
+0	"???: Woah, not so fast bud. Going around the frozen lake isn't so easy."	No	Neutral
+0	"???: You'll slide forward automatically. You'll look like a jerkoff if you press up or down, so don't do it"	No	Neutral
+0	???: Press space to break. You can turn to the left or the right. Think of it like steering a boat.	No	Neutral
+0	"???: Press enter to shoot. That's all there is to it. See you on the other side, my friend."	No	Neutral
+1	"???: Good job making your bones, Slick. But there's still a long road to respect."	No	Neutral
+1	???: Another part of the lake's got friends cluckin' about it.	No	Neutral
+1	"???: Friends of a friend, not a friend of ours. Give them a warm welcome."	No	Neutral
+1	"???: The more punks you whack, the higher your speed mult goes."	No	Neutral
+1	"???: The faster you'll go, too. But you'll have a harder time braking."	No	Neutral
+1	"???: If you bump into something, your speed mult will go down."	No	Neutral
+1	"???: And god forbid someone shootcha or hits ya. You'll loose a lot, like bread crumbs in the wind."	No	Neutral
+1	"???: Alright, enough yammerin'. Get out there kid."	No	Neutral
+2	"???: Look who it is! Can't believe you made it back, ya lucky duck."	No	Happy
+2	"???: Alright Slick, now that you've proven you're no silly goose, allow me to formally introduce myself..."	No	Happy
+2	???: The name's Don Pigeon. So I hear you wanna be made capo?	No	Happy
+2	"Don Pigeon: Well, I wanna knock bills with Daisy Duck."	No	Happy
+2	"Don Pigeon: I'm breaking your balls, Slick. Here, take somethin'."	Yes	Happy
+2	Don Pigeon: Keep working with me and I'll take care of ya.	No	Happy
+2	Don Pigeon: We've got some soldiers who decided to flip on The Flock.	No	Happy
+2	Don Pigeon: Clip their wings before they get a chance to go on the lam.	No	Happy
+2	"Don Pigeon: I'm counting on ya, Slick. Don't let me down."	No	Happy
+3	"Don Pigeon: Welcome back, Slick. What'll it be this time?"	Yes	Happy
+3	"Don Pigeon: Listen, I got a job coming up-not this next one, but it's some top level caca."	No	Happy
+3	Don Pigeon: It comes from a friend of mine who runs the Golden Mallard Luxury Liner.	No	Happy
+3	Don Pigeon: It's where all the best earners and capos nest up this time of year.	No	Happy
+3	"Don Pigeon: The hottest chicks, the highest quality sunflower seeds..."	No	Happy
+3	"Don Pigeon: Might also be some loose snow in the cargo, if ya catch my drift."	No	Happy
+3	"Don Pigeon: Finish this next job for me, and I'll take ya on board."	No	Happy
+3	Don Pigeon: There's some fishy characters causing trouble on the ice nearby.	No	Happy
+3	"Don Pigeon: Turn em into sushi, and then we can party."	No	Happy
+4	"Don Pigeon: Welcome aboard, Slick! Bigger on the inside, ain't it?"	No	Happy
+4	Don Pigeon: Have a cup of joe!	Yes	Happy
+4	"Don Pigeon: Yeah, even the floors in here are iced over. How? Just forget about it."	No	Happy
+4	Don Pigeon: Over here's where we keep the goods I told you about.	No	Happy
+4	"Don Pigeon: I'll let ya in on a little secret, Slick....."	No	Neutral
+4	"Don Pigeon: I cut the quack with a bit of something else. It's not pure snow, but hey..."	No	Neutral
+4	Don Pigeon: What the customer doesn't know won't get us pinched. And makes us loads of cash.	No	Neutral
+4	...	No	Neutral
+4	"Don Pigeon: ...Slick, you telling me you got a problem with how we run our business here?"	No	Neutral
+4	Don Pigeon: What a shame...	No	Neutral
+4	"Don Pigeon: I thought you were just another duck, but turns out you were a rat all along..."	No	Neutral
+4	...	No	Neutral
+4	"Don Pigeon: Wait, you're with the fuzz?"	No	Angry
+4	"Don Pigeon: Well, you know what they say about two birds and one stone."	No	Angry
+4	Don Pigeon: I'll just have to lacquer your tail feathers myself!	No	Angry
+4	"Don Pigeon: It all ends here, Slick. You can't top Don Pigeon, the big boss of The Flock!"	No	Angry
+5	"Don Pigeon: I dont believe it, your fighting is... im-peck-able..."	No	Defeated
+5	"Don Pigeon: I'll let it slide, but only this one time. Get outta here."	No	Defeated
+5	...	No	Defeated
+5	Don Pigeon: ...I said go.	No	Defeated
+5	...	No	Defeated
+5	"Don Pigeon: Come on Slick, ya already whooped my tail."	No	Defeated
+5	...	No	Defeated
+5	Don Pigeon: No need to kick a bird while he's down.	No	Defeated
+5	...	No	Defeated
+5	Don Pigeon: One more squawk out of you and I'm ending this here little game of yours.	No	Defeated
+5	...	No	Defeated
+5	"Don Pigeon: Alright, have it your way. See ya on the flip side, Slick."	No	Defeated
+5	"I swear, one more Enter and the game's gonna crash."	No	Defeated
+5	"Don Pigeon: ...Wait, what do you mean your name's Ducky?"	No	Defeated
